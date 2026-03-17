@@ -418,6 +418,13 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="preset not found") from exc
 
+    @app.get("/api/library/presets/{preset_id}/latest-bundle-status")
+    def get_library_preset_latest_bundle_status(preset_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_preset_latest_bundle_status(preset_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="preset not found") from exc
+
     @app.post("/api/library/presets/{preset_id}/build-session-payload")
     def build_library_session_payload(preset_id: str) -> dict[str, Any]:
         try:

@@ -24,6 +24,7 @@ import type {
   LibraryManualRetrievalUnitRecord,
   LibraryOverlayRecord,
   LibraryPresetComparisonRecord,
+  LibraryPresetLatestBundleStatusRecord,
   LibraryPresetRecord,
   LibraryProfileRecord,
   LibraryProjectAuthoringPackRecord,
@@ -271,11 +272,22 @@ function mapBundleSummary(raw: any): LibraryBundleSummaryRecord {
     overlayName: asString(raw?.overlay_name),
     projectIds: asStringArray(raw?.project_ids),
     projectNames: asStringArray(raw?.project_names),
+    includeRoleDocuments: Boolean(raw?.include_role_documents),
     projectCount: asNumber(raw?.project_count),
     retrievalUnitCount: asNumber(raw?.retrieval_unit_count),
     metricEvidenceCount: asNumber(raw?.metric_evidence_count),
     terminologyCount: asNumber(raw?.terminology_count),
     builtAt: asNumber(raw?.built_at),
+  };
+}
+
+function mapPresetLatestBundleStatus(raw: any): LibraryPresetLatestBundleStatusRecord {
+  return {
+    preset: mapPreset(raw?.preset),
+    latestBundle: raw?.latest_bundle ? mapBundleSummary(raw.latest_bundle) : null,
+    status: asString(raw?.status, "missing") as "missing" | "current" | "stale",
+    reasons: asStringArray(raw?.reasons),
+    staleProjectNames: asStringArray(raw?.stale_project_names),
   };
 }
 
@@ -834,6 +846,16 @@ export async function compareLibraryPresets(
     errorMessage: "Failed to compare presets",
   });
   return mapPresetComparison(payload);
+}
+
+export async function getLibraryPresetLatestBundleStatus(
+  baseUrl: string,
+  presetId: string,
+): Promise<LibraryPresetLatestBundleStatusRecord> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/presets/${presetId}/latest-bundle-status`, {
+    errorMessage: "Failed to load preset bundle status",
+  });
+  return mapPresetLatestBundleStatus(payload);
 }
 
 export async function listLibraryBundles(

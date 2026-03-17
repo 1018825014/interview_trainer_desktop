@@ -279,6 +279,14 @@ export interface LibraryPresetComparisonRecord {
   includeRoleDocumentsChanged: boolean;
 }
 
+export interface LibraryPresetLatestBundleStatusRecord {
+  preset: LibraryPresetRecord;
+  latestBundle: LibraryBundleSummaryRecord | null;
+  status: "missing" | "current" | "stale";
+  reasons: string[];
+  staleProjectNames: string[];
+}
+
 export interface LibraryBundleSummaryRecord {
   bundleId: string;
   presetId: string;
@@ -287,6 +295,7 @@ export interface LibraryBundleSummaryRecord {
   overlayName: string;
   projectIds: string[];
   projectNames: string[];
+  includeRoleDocuments: boolean;
   projectCount: number;
   retrievalUnitCount: number;
   metricEvidenceCount: number;

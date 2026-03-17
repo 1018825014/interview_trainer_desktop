@@ -126,7 +126,7 @@ class WorkspaceManager:
         project = self._normalize_project(payload)
         workspace["knowledge"].setdefault("projects", []).append(project)
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = time.time()
+        workspace["updated_at"] = self._touch_project(project)
         self.repository.save_workspace(workspace)
         return self._serialize_project(project)
 
@@ -281,7 +281,7 @@ class WorkspaceManager:
         project["manual_metrics"] = metrics
         project["manual_retrieval_units"] = units
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = time.time()
+        workspace["updated_at"] = self._touch_project(project)
         self.repository.save_workspace(workspace)
         response["project"] = self._serialize_project(project)
         return response
@@ -335,7 +335,7 @@ class WorkspaceManager:
                 if isinstance(item, dict) and _content_text(item.get("content")).strip()
             ]
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = time.time()
+        workspace["updated_at"] = self._touch_project(project)
         self.repository.save_workspace(workspace)
         return self._serialize_project(project)
 
@@ -357,7 +357,7 @@ class WorkspaceManager:
         document = self._normalize_document_asset(payload, scope="project")
         project.setdefault("documents", []).append(document)
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = time.time()
+        workspace["updated_at"] = self._touch_project(project)
         self.repository.save_workspace(workspace)
         return self._serialize_document(document)
 
@@ -409,12 +409,18 @@ class WorkspaceManager:
             document["source_path"] = _clean_text(payload.get("source_path"))
         document["updated_at"] = time.time()
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = document["updated_at"]
+        owner = self._project_for_document(workspace, document)
+        workspace["updated_at"] = (
+            self._touch_project(owner, timestamp=document["updated_at"])
+            if owner is not None
+            else document["updated_at"]
+        )
         self.repository.save_workspace(workspace)
         return self._serialize_document(document)
 
     def delete_document(self, document_id: str) -> dict[str, str]:
         workspace, document = self._find_document(document_id)
+        touched_at = time.time()
         role_documents = workspace.get("knowledge", {}).get("role_documents", [])
         if document in role_documents:
             workspace["knowledge"]["role_documents"] = [item for item in role_documents if item is not document]
@@ -423,9 +429,10 @@ class WorkspaceManager:
                 documents = project.get("documents", [])
                 if document in documents:
                     project["documents"] = [item for item in documents if item is not document]
+                    touched_at = self._touch_project(project, timestamp=touched_at)
                     break
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = time.time()
+        workspace["updated_at"] = touched_at
         self.repository.save_workspace(workspace)
         return {"status": "deleted", "document_id": document_id}
 
@@ -549,6 +556,54 @@ class WorkspaceManager:
             "right_include_role_documents": bool(right_preset.get("include_role_documents", True)),
             "include_role_documents_changed": bool(left_preset.get("include_role_documents", True))
             != bool(right_preset.get("include_role_documents", True)),
+        }
+
+    def get_preset_latest_bundle_status(self, preset_id: str) -> dict[str, Any]:
+        workspace, preset = self._find_preset(preset_id)
+        latest_bundle = self._latest_bundle_for_preset(workspace, preset_id)
+        if latest_bundle is None:
+            return {
+                "preset": self._serialize_preset(preset),
+                "latest_bundle": None,
+                "status": "missing",
+                "reasons": ["missing_bundle"],
+                "stale_project_names": [],
+            }
+
+        reasons: list[str] = []
+        current_project_ids = {_clean_text(item) for item in preset.get("project_ids", []) if _clean_text(item)}
+        bundle_project_ids = {_clean_text(item) for item in latest_bundle.get("project_ids", []) if _clean_text(item)}
+        if current_project_ids != bundle_project_ids:
+            reasons.append("project_selection_changed")
+        if _clean_text(preset.get("overlay_id")) != _clean_text(latest_bundle.get("overlay_id")):
+            reasons.append("overlay_changed")
+        if bool(preset.get("include_role_documents", True)) != bool(latest_bundle.get("include_role_documents", True)):
+            reasons.append("include_role_documents_changed")
+
+        built_at = float(latest_bundle.get("built_at", 0.0) or 0.0)
+        stale_project_names = [
+            _clean_text(project.get("name"))
+            for project in self._projects_for_preset(workspace, preset)
+            if float(project.get("updated_at", 0.0) or 0.0) > built_at
+        ]
+        if stale_project_names:
+            reasons.append("project_content_updated")
+
+        overlay = self._overlay_for_preset(workspace, preset)
+        if overlay is not None and float(overlay.get("updated_at", 0.0) or 0.0) > built_at:
+            reasons.append("overlay_updated")
+
+        if bool(preset.get("include_role_documents", True)):
+            role_documents = workspace.get("knowledge", {}).get("role_documents", [])
+            if any(float(item.get("updated_at", 0.0) or 0.0) > built_at for item in role_documents if isinstance(item, dict)):
+                reasons.append("role_documents_updated")
+
+        return {
+            "preset": self._serialize_preset(preset),
+            "latest_bundle": self._serialize_bundle_summary(latest_bundle),
+            "status": "current" if not reasons else "stale",
+            "reasons": reasons,
+            "stale_project_names": stale_project_names,
         }
 
     def list_bundles(self, workspace_id: str) -> dict[str, Any]:
@@ -729,6 +784,7 @@ class WorkspaceManager:
         payload = self.session_builder.build_session_payload(workspace, preset, overlay)
         bundle_record = {
             **dict(payload["activation_summary"]),
+            "include_role_documents": bool(preset.get("include_role_documents", True)),
             "knowledge": payload.get("knowledge", {}),
             "briefing": payload.get("briefing", {}),
             "artifact_index": self._normalize_bundle_artifact_index(payload.get("artifact_index")),
@@ -871,9 +927,11 @@ class WorkspaceManager:
             for item in payload.get("code_files", [])
             if isinstance(item, dict) and _content_text(item.get("content")).strip()
         ]
+        project["updated_at"] = float(payload.get("updated_at", project["updated_at"]) or project["updated_at"])
         return project
 
     def _default_project(self, name: str) -> dict[str, Any]:
+        now = time.time()
         return {
             "project_id": str(uuid4()),
             "name": name,
@@ -893,6 +951,7 @@ class WorkspaceManager:
             "repo_summaries": [],
             "documents": [],
             "code_files": [],
+            "updated_at": now,
         }
 
     def _serialize_project(self, project: dict[str, Any]) -> dict[str, Any]:
@@ -918,6 +977,7 @@ class WorkspaceManager:
             "repo_summaries": [dict(item) for item in project.get("repo_summaries", [])],
             "documents": [self._serialize_document(item) for item in project.get("documents", [])],
             "code_files": [self._serialize_code_file(item) for item in project.get("code_files", [])],
+            "updated_at": float(project.get("updated_at", 0.0) or 0.0),
         }
 
     def _project_authoring_pack_parts(
@@ -1265,6 +1325,7 @@ class WorkspaceManager:
             "overlay_name": _clean_text(bundle.get("overlay_name")),
             "project_ids": list(bundle.get("project_ids", [])),
             "project_names": list(bundle.get("project_names", [])),
+            "include_role_documents": bool(bundle.get("include_role_documents", True)),
             "project_count": int(bundle.get("project_count", 0) or 0),
             "retrieval_unit_count": int(bundle.get("retrieval_unit_count", 0) or 0),
             "metric_evidence_count": int(bundle.get("metric_evidence_count", 0) or 0),
@@ -1488,27 +1549,47 @@ class WorkspaceManager:
                     return workspace, preset
         raise KeyError(preset_id)
 
-    def _project_names_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> list[str]:
-        projects = {
-            _clean_text(project.get("project_id")): _clean_text(project.get("name"))
+    def _latest_bundle_for_preset(self, workspace: dict[str, Any], preset_id: str) -> dict[str, Any] | None:
+        matches = [
+            bundle
+            for bundle in workspace.get("compiled_bundles", [])
+            if _clean_text(bundle.get("preset_id")) == preset_id
+        ]
+        if not matches:
+            return None
+        return max(matches, key=lambda item: float(item.get("built_at", 0.0) or 0.0))
+
+    def _projects_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> list[dict[str, Any]]:
+        project_index = {
+            _clean_text(project.get("project_id")): project
             for project in workspace.get("knowledge", {}).get("projects", [])
             if isinstance(project, dict)
         }
-        names: list[str] = []
-        for project_id in preset.get("project_ids", []):
-            normalized = _clean_text(project_id)
-            if normalized and normalized in projects:
-                names.append(projects[normalized])
-        return names
+        return [
+            project_index[normalized]
+            for project_id in preset.get("project_ids", [])
+            if (normalized := _clean_text(project_id)) in project_index
+        ]
+
+    def _project_names_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> list[str]:
+        return [
+            _clean_text(project.get("name"))
+            for project in self._projects_for_preset(workspace, preset)
+            if _clean_text(project.get("name"))
+        ]
 
     def _overlay_name_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> str:
+        overlay = self._overlay_for_preset(workspace, preset)
+        return _clean_text(overlay.get("name")) if overlay is not None else ""
+
+    def _overlay_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> dict[str, Any] | None:
         overlay_id = _clean_text(preset.get("overlay_id"))
         if not overlay_id:
-            return ""
+            return None
         for overlay in workspace.get("overlays", []):
             if _clean_text(overlay.get("overlay_id")) == overlay_id:
-                return _clean_text(overlay.get("name"))
-        return ""
+                return overlay
+        return None
 
     def _find_document(self, document_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         for workspace in self._workspaces.values():
@@ -1520,6 +1601,12 @@ class WorkspaceManager:
                     if _clean_text(document.get("document_id")) == document_id:
                         return workspace, document
         raise KeyError(document_id)
+
+    def _project_for_document(self, workspace: dict[str, Any], document: dict[str, Any]) -> dict[str, Any] | None:
+        for project in workspace.get("knowledge", {}).get("projects", []):
+            if document in project.get("documents", []):
+                return project
+        return None
 
     def _find_repo(self, repo_id: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         for workspace in self._workspaces.values():
@@ -1617,7 +1704,7 @@ class WorkspaceManager:
             project["architecture"] = _clean_text(payload.get("architecture")) or project.get("architecture", "")
 
         self._invalidate_compiled_artifacts(workspace)
-        workspace["updated_at"] = time.time()
+        workspace["updated_at"] = self._touch_project(project)
         repo_summary = {
             "repo_id": repo_id,
             "label": project_name,
@@ -1647,6 +1734,12 @@ class WorkspaceManager:
 
     def _is_repo_managed_code_file(self, code_file: dict[str, Any], repo_id: str) -> bool:
         return _clean_text(code_file.get("source_kind")) == "repo_import" and _clean_text(code_file.get("repo_id")) == repo_id
+
+    def _touch_project(self, project: dict[str, Any] | None, *, timestamp: float | None = None) -> float:
+        touched_at = float(timestamp or time.time())
+        if project is not None:
+            project["updated_at"] = touched_at
+        return touched_at
 
     def _upgrade_loaded_workspaces(self) -> None:
         changed = False

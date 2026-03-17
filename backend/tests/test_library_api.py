@@ -435,6 +435,67 @@ class LibraryApiTests(unittest.TestCase):
         self.assertTrue(comparison["include_role_documents_changed"])
         self.assertEqual(comparison["shared_projects"], ["Agent Console"])
 
+    def test_library_preset_latest_bundle_status_detects_stale_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Pitch",
+                    "business_value": "Build agent workflows",
+                    "architecture": "React + Python",
+                },
+            ).json()
+            overlay_one = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={"name": "Alibaba", "company": "Alibaba"},
+            ).json()
+            overlay_two = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={"name": "ByteDance", "company": "ByteDance"},
+            ).json()
+            preset = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Preset A",
+                    "project_ids": [project["project_id"]],
+                    "overlay_id": overlay_one["overlay_id"],
+                    "include_role_documents": True,
+                },
+            ).json()
+
+            client.post(f"/api/library/presets/{preset['preset_id']}/build-session-payload").json()
+            current = client.get(
+                f"/api/library/presets/{preset['preset_id']}/latest-bundle-status"
+            ).json()
+
+            client.put(
+                f"/api/library/projects/{project['project_id']}",
+                json={"architecture": "React + Python + SQLite"},
+            ).json()
+            client.put(
+                f"/api/library/presets/{preset['preset_id']}",
+                json={
+                    "overlay_id": overlay_two["overlay_id"],
+                    "include_role_documents": False,
+                },
+            ).json()
+            stale = client.get(
+                f"/api/library/presets/{preset['preset_id']}/latest-bundle-status"
+            ).json()
+
+        self.assertEqual(current["status"], "current")
+        self.assertEqual(current["reasons"], [])
+        self.assertEqual(current["latest_bundle"]["preset_id"], preset["preset_id"])
+        self.assertEqual(stale["status"], "stale")
+        self.assertIn("project_content_updated", stale["reasons"])
+        self.assertIn("overlay_changed", stale["reasons"])
+        self.assertIn("include_role_documents_changed", stale["reasons"])
+        self.assertEqual(stale["stale_project_names"], ["Agent Console"])
+        self.assertEqual(stale["latest_bundle"]["overlay_name"], "Alibaba")
+
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

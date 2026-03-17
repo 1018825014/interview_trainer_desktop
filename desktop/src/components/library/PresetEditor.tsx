@@ -2,6 +2,7 @@ import type {
   LibraryBundleSummaryRecord,
   LibraryOverlayRecord,
   LibraryPresetComparisonRecord,
+  LibraryPresetLatestBundleStatusRecord,
   LibraryPresetRecord,
   LibraryProjectRecord,
 } from "../../types/library";
@@ -12,6 +13,7 @@ interface PresetEditorProps {
   overlays: LibraryOverlayRecord[];
   presets: LibraryPresetRecord[];
   latestBundle: LibraryBundleSummaryRecord | null;
+  latestBundleStatus: LibraryPresetLatestBundleStatusRecord | null;
   comparison: LibraryPresetComparisonRecord | null;
   comparePresetId: string;
   onChange: (preset: LibraryPresetRecord) => void;
@@ -32,6 +34,7 @@ export function PresetEditor({
   overlays,
   presets,
   latestBundle,
+  latestBundleStatus,
   comparison,
   comparePresetId,
   onChange,
@@ -54,6 +57,15 @@ export function PresetEditor({
   }
 
   const otherPresets = presets.filter((item) => item.presetId !== preset.presetId);
+  const reasonLabels: Record<string, string> = {
+    missing_bundle: "还没有生成过 bundle",
+    project_selection_changed: "启用项目和最新 bundle 不一致",
+    overlay_changed: "绑定的 overlay 已变化",
+    include_role_documents_changed: "是否附带 role documents 已变化",
+    project_content_updated: "项目资料在 bundle 之后被修改过",
+    overlay_updated: "overlay 内容在 bundle 之后被修改过",
+    role_documents_updated: "role documents 在 bundle 之后被修改过",
+  };
 
   return (
     <section className="library-editor">
@@ -109,6 +121,34 @@ export function PresetEditor({
             {latestBundle.presetName} | {latestBundle.projectCount} 个项目 | {latestBundle.retrievalUnitCount} 个回答单元 |
             {latestBundle.metricEvidenceCount} 个指标证据
           </p>
+        </div>
+      ) : null}
+
+      {latestBundleStatus ? (
+        <div className="meta-card">
+          <div className="panel-head compact">
+            <span>Bundle Status</span>
+            <strong>{latestBundleStatus.status}</strong>
+          </div>
+          <p>
+            {latestBundleStatus.status === "current"
+              ? "当前 preset 和最新 bundle 是同步的，可以直接用于面试会话。"
+              : latestBundleStatus.status === "missing"
+                ? "这个 preset 还没有生成过 bundle，建议先构建一次会话知识包。"
+                : "这个 preset 相对最新 bundle 已经有漂移，建议先重建。"}
+          </p>
+          {latestBundleStatus.reasons.length > 0 ? (
+            <div className="tokens">
+              {latestBundleStatus.reasons.map((reason) => (
+                <span key={reason} className="token token-outline">
+                  {reasonLabels[reason] ?? reason}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {latestBundleStatus.staleProjectNames.length > 0 ? (
+            <p>已变更项目: {latestBundleStatus.staleProjectNames.join(" / ")}</p>
+          ) : null}
         </div>
       ) : null}
 

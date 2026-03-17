@@ -559,11 +559,42 @@ Recommended current setup:
     - `tests.test_generation -v`
   - full backend unittest:
     - `73/73` passing
+- Stage 18 implemented:
+  - added preset-vs-latest-bundle drift detection for the knowledge-library workflow
+  - new backend API:
+    - `GET /api/library/presets/{preset_id}/latest-bundle-status`
+  - backend drift status now reports whether the preset is:
+    - `missing`
+    - `current`
+    - `stale`
+  - stale reasons currently include:
+    - project selection changed
+    - overlay changed
+    - include-role-documents changed
+    - project content updated after the bundle was built
+    - overlay updated after the bundle was built
+    - role documents updated after the bundle was built
+  - project records now persist `updated_at`, which makes bundle staleness checks much more accurate for:
+    - manual authoring edits
+    - project document edits
+    - repo reindex / import refreshes
+  - desktop preset editing now shows a dedicated bundle-status panel:
+    - current vs stale vs missing
+    - human-readable stale reasons
+    - the exact project names that changed after the latest bundle
+  - this makes the preset workflow much safer before a live interview because you can tell immediately whether the current bundle is still trustworthy
+- Stage 18 verification:
+  - targeted backend tests:
+    - `tests.test_library_api -v`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `74/74` passing
 - Recommended next implementation order:
   1. larger-library workspace preview UX polish
   2. preset workflow refinement:
-     - compare against latest built bundle
      - saved preset families for one-click company switching
+     - compare current preset against a non-latest historical bundle on demand
   3. authoring-pack refinement:
      - saved template presets across projects
      - smarter dedupe / rename suggestions when importing external templates

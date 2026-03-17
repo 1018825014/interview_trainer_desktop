@@ -17,6 +17,7 @@ import {
   getLibraryBundleDetail,
   getLibraryProjectAuthoringPack,
   getLibraryProjectCompiledPreview,
+  getLibraryPresetLatestBundleStatus,
   getLibraryWorkspaceCompiledPreview,
   getLibraryWorkspace,
   importLibraryProjectPath,
@@ -39,6 +40,7 @@ import type {
   LibraryEntitySelection,
   LibraryOverlayRecord,
   LibraryPresetComparisonRecord,
+  LibraryPresetLatestBundleStatusRecord,
   LibraryPresetRecord,
   LibraryDocumentRecord,
   LibraryProjectAuthoringPackRecord,
@@ -299,6 +301,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     search: "",
   });
   const [presetComparison, setPresetComparison] = useState<LibraryPresetComparisonRecord | null>(null);
+  const [presetLatestBundleStatus, setPresetLatestBundleStatus] = useState<LibraryPresetLatestBundleStatusRecord | null>(null);
   const [comparePresetId, setComparePresetId] = useState("");
   const [bundleDetail, setBundleDetail] = useState<LibraryBundleDetailRecord | null>(null);
   const [bundleComparison, setBundleComparison] = useState<LibraryBundleComparisonRecord | null>(null);
@@ -409,8 +412,35 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
 
   useEffect(() => {
     setPresetComparison(null);
+    setPresetLatestBundleStatus(null);
     setComparePresetId("");
   }, [selectedPreset?.presetId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPresetLatestBundleStatus() {
+      if (!selectedPreset || !backendOnline) {
+        setPresetLatestBundleStatus(null);
+        return;
+      }
+      try {
+        const status = await getLibraryPresetLatestBundleStatus(backendBaseUrl, selectedPreset.presetId);
+        if (!cancelled) {
+          setPresetLatestBundleStatus(status);
+        }
+      } catch {
+        if (!cancelled) {
+          setPresetLatestBundleStatus(null);
+        }
+      }
+    }
+
+    void loadPresetLatestBundleStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl, backendOnline, selectedPreset?.presetId, selectedPreset?.updatedAt, workspace?.compiledBundles]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1647,6 +1677,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
               overlays={workspace?.overlays ?? []}
               presets={workspace?.presets ?? []}
               latestBundle={presetLatestBundle}
+              latestBundleStatus={presetLatestBundleStatus}
               comparison={presetComparison}
               comparePresetId={comparePresetId}
               onChange={updatePreset}
