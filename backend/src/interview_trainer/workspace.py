@@ -365,14 +365,60 @@ class WorkspaceManager:
 
     def list_bundles(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
-        return {"bundles": [dict(item) for item in workspace.get("compiled_bundles", [])]}
+        return {
+            "bundles": [
+                self._serialize_bundle_summary(item)
+                for item in workspace.get("compiled_bundles", [])
+            ]
+        }
 
     def get_bundle(self, bundle_id: str) -> dict[str, Any]:
         for workspace in self._workspaces.values():
             for bundle in workspace.get("compiled_bundles", []):
                 if _clean_text(bundle.get("bundle_id")) == bundle_id:
-                    return dict(bundle)
+                    return {
+                        **self._serialize_bundle_summary(bundle),
+                        "knowledge": bundle.get("knowledge", {}),
+                        "briefing": bundle.get("briefing", {}),
+                    }
         raise KeyError(bundle_id)
+
+    def reuse_bundle_session_payload(self, bundle_id: str) -> dict[str, Any]:
+        for workspace in self._workspaces.values():
+            for bundle in workspace.get("compiled_bundles", []):
+                if _clean_text(bundle.get("bundle_id")) != bundle_id:
+                    continue
+                return {
+                    "knowledge": bundle.get("knowledge", {}),
+                    "briefing": bundle.get("briefing", {}),
+                    "activation_summary": self._serialize_bundle_summary(bundle),
+                }
+        raise KeyError(bundle_id)
+
+    def compare_bundles(self, left_bundle_id: str, right_bundle_id: str) -> dict[str, Any]:
+        left_bundle = self._find_compiled_bundle(left_bundle_id)
+        right_bundle = self._find_compiled_bundle(right_bundle_id)
+        left_projects = list(left_bundle.get("project_names", []))
+        right_projects = list(right_bundle.get("project_names", []))
+        added_projects = [item for item in left_projects if item not in right_projects]
+        removed_projects = [item for item in right_projects if item not in left_projects]
+        left_focus = list(left_bundle.get("briefing", {}).get("focus_topics", []))
+        right_focus = list(right_bundle.get("briefing", {}).get("focus_topics", []))
+        return {
+            "left_bundle": self._serialize_bundle_summary(left_bundle),
+            "right_bundle": self._serialize_bundle_summary(right_bundle),
+            "added_projects": added_projects,
+            "removed_projects": removed_projects,
+            "project_count_delta": int(left_bundle.get("project_count", 0)) - int(right_bundle.get("project_count", 0)),
+            "retrieval_unit_delta": int(left_bundle.get("retrieval_unit_count", 0))
+            - int(right_bundle.get("retrieval_unit_count", 0)),
+            "metric_evidence_delta": int(left_bundle.get("metric_evidence_count", 0))
+            - int(right_bundle.get("metric_evidence_count", 0)),
+            "terminology_delta": int(left_bundle.get("terminology_count", 0))
+            - int(right_bundle.get("terminology_count", 0)),
+            "added_focus_topics": [item for item in left_focus if item not in right_focus],
+            "removed_focus_topics": [item for item in right_focus if item not in left_focus],
+        }
 
     def get_workspace_compiled_preview(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
@@ -442,7 +488,12 @@ class WorkspaceManager:
             except KeyError:
                 overlay = None
         payload = self.session_builder.build_session_payload(workspace, preset, overlay)
-        workspace.setdefault("compiled_bundles", []).append(dict(payload["activation_summary"]))
+        bundle_record = {
+            **dict(payload["activation_summary"]),
+            "knowledge": payload.get("knowledge", {}),
+            "briefing": payload.get("briefing", {}),
+        }
+        workspace.setdefault("compiled_bundles", []).append(bundle_record)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return payload
@@ -495,7 +546,10 @@ class WorkspaceManager:
             },
             "overlays": [self._serialize_overlay(item) for item in workspace.get("overlays", [])],
             "presets": [self._serialize_preset(item) for item in workspace.get("presets", [])],
-            "compiled_bundles": [dict(item) for item in workspace.get("compiled_bundles", [])],
+            "compiled_bundles": [
+                self._serialize_bundle_summary(item)
+                for item in workspace.get("compiled_bundles", [])
+            ],
             "created_at": workspace["created_at"],
             "updated_at": workspace["updated_at"],
             "compiled_knowledge": workspace["compiled_knowledge"],
@@ -750,6 +804,29 @@ class WorkspaceManager:
             "terminology": list(payload.get("terminology", [])),
             "compiled_at": time.time(),
         }
+
+    def _serialize_bundle_summary(self, bundle: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "bundle_id": _clean_text(bundle.get("bundle_id")),
+            "preset_id": _clean_text(bundle.get("preset_id")),
+            "preset_name": _clean_text(bundle.get("preset_name")),
+            "overlay_id": _clean_text(bundle.get("overlay_id")),
+            "overlay_name": _clean_text(bundle.get("overlay_name")),
+            "project_ids": list(bundle.get("project_ids", [])),
+            "project_names": list(bundle.get("project_names", [])),
+            "project_count": int(bundle.get("project_count", 0) or 0),
+            "retrieval_unit_count": int(bundle.get("retrieval_unit_count", 0) or 0),
+            "metric_evidence_count": int(bundle.get("metric_evidence_count", 0) or 0),
+            "terminology_count": int(bundle.get("terminology_count", 0) or 0),
+            "built_at": float(bundle.get("built_at", 0.0) or 0.0),
+        }
+
+    def _find_compiled_bundle(self, bundle_id: str) -> dict[str, Any]:
+        for workspace in self._workspaces.values():
+            for bundle in workspace.get("compiled_bundles", []):
+                if _clean_text(bundle.get("bundle_id")) == bundle_id:
+                    return bundle
+        raise KeyError(bundle_id)
 
     def _empty_compiled_preview(self) -> dict[str, Any]:
         return {

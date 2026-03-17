@@ -1,5 +1,8 @@
 import { requestJson } from "./client";
 import type {
+  LibraryBriefingPayload,
+  LibraryBundleComparisonRecord,
+  LibraryBundleDetailRecord,
   LibraryBundleSummaryRecord,
   LibraryCompiledEvidenceCardRecord,
   LibraryCompiledMetricEvidenceRecord,
@@ -350,6 +353,41 @@ function mapSessionPayload(raw: any): LibrarySessionPayload {
   };
 }
 
+function mapBriefing(raw: any): LibraryBriefingPayload {
+  return {
+    company: asString(raw?.company),
+    businessContext: asString(raw?.business_context ?? raw?.businessContext),
+    jobDescription: asString(raw?.job_description ?? raw?.jobDescription),
+    priorityProjects: asStringArray(raw?.priority_projects ?? raw?.priorityProjects),
+    focusTopics: asStringArray(raw?.focus_topics ?? raw?.focusTopics),
+    styleBias: asStringArray(raw?.style_bias ?? raw?.styleBias),
+    likelyQuestions: asStringArray(raw?.likely_questions ?? raw?.likelyQuestions),
+  };
+}
+
+function mapBundleDetail(raw: any): LibraryBundleDetailRecord {
+  return {
+    ...mapBundleSummary(raw),
+    knowledge: raw?.knowledge ?? {},
+    briefing: mapBriefing(raw?.briefing),
+  };
+}
+
+function mapBundleComparison(raw: any): LibraryBundleComparisonRecord {
+  return {
+    leftBundle: mapBundleSummary(raw?.left_bundle),
+    rightBundle: mapBundleSummary(raw?.right_bundle),
+    addedProjects: asStringArray(raw?.added_projects),
+    removedProjects: asStringArray(raw?.removed_projects),
+    projectCountDelta: asNumber(raw?.project_count_delta),
+    retrievalUnitDelta: asNumber(raw?.retrieval_unit_delta),
+    metricEvidenceDelta: asNumber(raw?.metric_evidence_delta),
+    terminologyDelta: asNumber(raw?.terminology_delta),
+    addedFocusTopics: asStringArray(raw?.added_focus_topics),
+    removedFocusTopics: asStringArray(raw?.removed_focus_topics),
+  };
+}
+
 export async function listLibraryWorkspaces(baseUrl: string): Promise<LibraryWorkspaceRecord[]> {
   const payload = await requestJson<{ workspaces?: unknown[] }>(`${baseUrl}/api/library/workspaces`, {
     errorMessage: "Failed to load library workspaces",
@@ -599,6 +637,36 @@ export async function listLibraryBundles(
     errorMessage: "Failed to load bundle summaries",
   });
   return Array.isArray(payload.bundles) ? payload.bundles.map(mapBundleSummary) : [];
+}
+
+export async function getLibraryBundleDetail(baseUrl: string, bundleId: string): Promise<LibraryBundleDetailRecord> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/bundles/${bundleId}`, {
+    errorMessage: "Failed to load bundle detail",
+  });
+  return mapBundleDetail(payload);
+}
+
+export async function compareLibraryBundles(
+  baseUrl: string,
+  leftBundleId: string,
+  rightBundleId: string,
+): Promise<LibraryBundleComparisonRecord> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/bundles/${leftBundleId}/compare/${rightBundleId}`, {
+    errorMessage: "Failed to compare bundles",
+  });
+  return mapBundleComparison(payload);
+}
+
+export async function reuseLibraryBundleSessionPayload(
+  baseUrl: string,
+  bundleId: string,
+): Promise<LibrarySessionPayload> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/bundles/${bundleId}/reuse-session-payload`, {
+    method: "POST",
+    payload: {},
+    errorMessage: "Failed to reuse bundle payload",
+  });
+  return mapSessionPayload(payload);
 }
 
 export async function compileLibraryWorkspace(

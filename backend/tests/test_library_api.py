@@ -185,6 +185,75 @@ class LibraryApiTests(unittest.TestCase):
         self.assertIn("manual-metric-1", {item["evidence_id"] for item in preview["metric_evidence"]})
         self.assertIn("manual-ru-1", {item["unit_id"] for item in preview["retrieval_units"]})
 
+    def test_library_bundle_history_supports_reuse_and_compare(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project_one = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Pitch one",
+                    "business_value": "Build agent workflows",
+                    "architecture": "React + Python",
+                },
+            ).json()
+            project_two = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Retrieval Ops",
+                    "pitch_30": "Pitch two",
+                    "business_value": "Improve retrieval quality",
+                    "architecture": "SQLite + local bundle compiler",
+                },
+            ).json()
+            overlay = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={
+                    "name": "Alibaba",
+                    "company": "Alibaba",
+                    "job_description": "agent platform",
+                    "business_context": "support internal engineering teams",
+                },
+            ).json()
+            preset = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Alibaba preset",
+                    "project_ids": [project_one["project_id"]],
+                    "overlay_id": overlay["overlay_id"],
+                },
+            ).json()
+
+            first_payload = client.post(
+                f"/api/library/presets/{preset['preset_id']}/build-session-payload"
+            ).json()
+            client.put(
+                f"/api/library/presets/{preset['preset_id']}",
+                json={
+                    "project_ids": [project_one["project_id"], project_two["project_id"]],
+                    "overlay_id": overlay["overlay_id"],
+                },
+            ).json()
+            second_payload = client.post(
+                f"/api/library/presets/{preset['preset_id']}/build-session-payload"
+            ).json()
+
+            reused = client.post(
+                f"/api/library/bundles/{first_payload['activation_summary']['bundle_id']}/reuse-session-payload"
+            ).json()
+            comparison = client.get(
+                f"/api/library/bundles/{second_payload['activation_summary']['bundle_id']}/compare/"
+                f"{first_payload['activation_summary']['bundle_id']}"
+            ).json()
+
+        self.assertEqual(len(reused["knowledge"]["projects"]), 1)
+        self.assertEqual(reused["knowledge"]["projects"][0]["project_id"], project_one["project_id"])
+        self.assertEqual(reused["briefing"]["company"], "Alibaba")
+        self.assertEqual(comparison["project_count_delta"], 1)
+        self.assertEqual(comparison["added_projects"], ["Retrieval Ops"])
+        self.assertEqual(comparison["removed_projects"], [])
+
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

@@ -389,6 +389,20 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="bundle not found") from exc
 
+    @app.get("/api/library/bundles/{left_bundle_id}/compare/{right_bundle_id}")
+    def compare_library_bundles(left_bundle_id: str, right_bundle_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.compare_bundles(left_bundle_id, right_bundle_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="bundle not found") from exc
+
+    @app.post("/api/library/bundles/{bundle_id}/reuse-session-payload")
+    def reuse_library_bundle_session_payload(bundle_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.reuse_bundle_session_payload(bundle_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="bundle not found") from exc
+
     @app.post("/api/workspaces/{workspace_id}/compile")
     def compile_workspace(workspace_id: str) -> dict[str, Any]:
         try:

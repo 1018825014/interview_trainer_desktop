@@ -221,6 +221,24 @@ export interface LibraryBundleSummaryRecord {
   builtAt: number;
 }
 
+export interface LibraryBundleDetailRecord extends LibraryBundleSummaryRecord {
+  knowledge: Record<string, unknown>;
+  briefing: LibraryBriefingPayload;
+}
+
+export interface LibraryBundleComparisonRecord {
+  leftBundle: LibraryBundleSummaryRecord;
+  rightBundle: LibraryBundleSummaryRecord;
+  addedProjects: string[];
+  removedProjects: string[];
+  projectCountDelta: number;
+  retrievalUnitDelta: number;
+  metricEvidenceDelta: number;
+  terminologyDelta: number;
+  addedFocusTopics: string[];
+  removedFocusTopics: string[];
+}
+
 export interface LibraryKnowledgeRecord {
   profile: LibraryProfileRecord;
   projects: LibraryProjectRecord[];

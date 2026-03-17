@@ -371,11 +371,33 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `49/49` passing
+- Stage 11 implemented:
+  - compiled bundle history is now persisted as snapshot records, not just summaries
+  - each bundle record now keeps:
+    - activation summary fields
+    - saved `knowledge`
+    - saved `briefing`
+  - added bundle history APIs for:
+    - bundle detail lookup
+    - bundle-to-bundle comparison
+    - reusing a historical bundle as a session payload snapshot
+  - workspace serialization still exposes only lightweight bundle summaries, so the main library list does not become heavy
+  - desktop bundle view now supports:
+    - viewing saved briefing context for the selected bundle
+    - comparing the current bundle with another bundle from history
+    - activating the selected historical bundle directly into the current interview session
+- Stage 11 verification:
+  - targeted backend tests:
+    - `test_library_api.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `50/50` passing
 - Recommended next implementation order:
-  1. bundle history / compare / reuse UX polish
-  2. deeper retrieval ranking and hook control tuning
-  3. direct document-asset persistence actions in the desktop editor
-  4. workspace-level compiled preview navigation and filtering polish
+  1. deeper retrieval ranking and hook control tuning
+  2. direct document-asset persistence actions in the desktop editor
+  3. workspace-level compiled preview navigation and filtering polish
+  4. bundle diff UX polish for evidence / retrieval-unit level changes
 
 ## Best next debugging tasks
 

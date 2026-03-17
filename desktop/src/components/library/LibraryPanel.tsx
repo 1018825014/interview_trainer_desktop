@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   buildPresetSessionPayload,
+  compareLibraryBundles,
   compileLibraryWorkspace,
   createLibraryOverlay,
   createLibraryPreset,
   createLibraryProject,
   createLibraryWorkspace,
   deleteLibraryProject,
+  getLibraryBundleDetail,
   getLibraryProjectCompiledPreview,
   getLibraryWorkspace,
   importLibraryProjectPath,
   listLibraryWorkspaces,
   reindexLibraryRepo,
+  reuseLibraryBundleSessionPayload,
   updateLibraryOverlay,
   updateLibraryPreset,
   updateLibraryProject,
@@ -20,6 +23,8 @@ import {
 import { sampleLibraryWorkspace } from "../../mock/sample";
 import type {
   LibraryBundleSummaryRecord,
+  LibraryBundleComparisonRecord,
+  LibraryBundleDetailRecord,
   LibraryEntitySelection,
   LibraryOverlayRecord,
   LibraryPresetRecord,
@@ -256,6 +261,9 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
   const [statusMessage, setStatusMessage] = useState("准备加载本地资料库");
   const [latestPayload, setLatestPayload] = useState<LibrarySessionPayload | null>(null);
   const [projectCompiledPreview, setProjectCompiledPreview] = useState<LibraryProjectCompiledPreviewRecord | null>(null);
+  const [bundleDetail, setBundleDetail] = useState<LibraryBundleDetailRecord | null>(null);
+  const [bundleComparison, setBundleComparison] = useState<LibraryBundleComparisonRecord | null>(null);
+  const [compareBundleId, setCompareBundleId] = useState("");
 
   function syncWorkspace(next: LibraryWorkspaceRecord) {
     setWorkspace(next);
@@ -385,6 +393,70 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       cancelled = true;
     };
   }, [backendBaseUrl, backendOnline, selectedProject?.projectId, workspace?.updatedAt, workspace?.compileSummary?.modules]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBundleArtifacts() {
+      if (!selectedBundle || !backendOnline) {
+        setBundleDetail(null);
+        setBundleComparison(null);
+        setCompareBundleId("");
+        return;
+      }
+      try {
+        const detail = await getLibraryBundleDetail(backendBaseUrl, selectedBundle.bundleId);
+        if (!cancelled) {
+          setBundleDetail(detail);
+          setBundleComparison(null);
+          setCompareBundleId((current) => {
+            if (current && current !== selectedBundle.bundleId) {
+              return current;
+            }
+            const fallback = (workspace?.compiledBundles ?? []).find((item) => item.bundleId !== selectedBundle.bundleId);
+            return fallback?.bundleId ?? "";
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setBundleDetail(null);
+          setBundleComparison(null);
+          setCompareBundleId("");
+        }
+      }
+    }
+
+    void loadBundleArtifacts();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl, backendOnline, selectedBundle?.bundleId, workspace?.compiledBundles]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBundleComparison() {
+      if (!selectedBundle || !compareBundleId || !backendOnline) {
+        setBundleComparison(null);
+        return;
+      }
+      try {
+        const comparison = await compareLibraryBundles(backendBaseUrl, selectedBundle.bundleId, compareBundleId);
+        if (!cancelled) {
+          setBundleComparison(comparison);
+        }
+      } catch {
+        if (!cancelled) {
+          setBundleComparison(null);
+        }
+      }
+    }
+
+    void loadBundleComparison();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl, backendOnline, selectedBundle?.bundleId, compareBundleId]);
 
   function updateProfile(profile: LibraryProfileRecord) {
     setWorkspace((current) =>
@@ -812,6 +884,39 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     }
   }
 
+  /*
+  async function handleReuseBundle() {
+    if (!backendOnline || !selectedBundle) {
+      setStatusMessage("璇峰厛閫夋嫨涓€涓彲澶嶇敤鐨?bundle銆?);
+      return;
+    }
+    try {
+      const payload = await reuseLibraryBundleSessionPayload(backendBaseUrl, selectedBundle.bundleId);
+      setLatestPayload(payload);
+      await onActivateSession(payload);
+      setStatusMessage(`Bundle ${selectedBundle.bundleId.slice(0, 8)} 宸茬敤浜庡綋鍓嶄細璇濄€俙);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "浣跨敤鍘嗗彶 bundle 澶辫触銆?);
+    }
+  }
+
+  */
+
+  async function handleReuseBundle() {
+    if (!backendOnline || !selectedBundle) {
+      setStatusMessage("请先选择一个可复用的 bundle。");
+      return;
+    }
+    try {
+      const payload = await reuseLibraryBundleSessionPayload(backendBaseUrl, selectedBundle.bundleId);
+      setLatestPayload(payload);
+      await onActivateSession(payload);
+      setStatusMessage(`Bundle ${selectedBundle.bundleId.slice(0, 8)} 已用于当前会话。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "使用历史 bundle 失败。");
+    }
+  }
+
   const profile = workspace?.knowledge.profile ?? defaultProfile();
 
   return (
@@ -991,6 +1096,69 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
                     <span>{selectedBundle.metricEvidenceCount} metric</span>
                     <span>{selectedBundle.terminologyCount} terms</span>
                   </div>
+                  <div className="action-row">
+                    <button className="ghost accent small" onClick={handleReuseBundle}>
+                      用这个 Bundle 激活会话
+                    </button>
+                  </div>
+                  {bundleDetail ? (
+                    <div className="meta-card">
+                      <div className="panel-head compact">
+                        <span>Saved Briefing</span>
+                        <strong>{bundleDetail.briefing.company || "No company"}</strong>
+                      </div>
+                      <p>{bundleDetail.briefing.businessContext || "No business context"}</p>
+                      <div className="tokens">
+                        {bundleDetail.briefing.focusTopics.map((topic) => (
+                          <span key={topic} className="token token-outline">
+                            {topic}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="session-chip">
+                        {bundleDetail.briefing.priorityProjects.map((projectName) => (
+                          <span key={projectName}>{projectName}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {workspace && workspace.compiledBundles.length > 1 ? (
+                    <div className="meta-card">
+                      <div className="panel-head compact">
+                        <span>Compare Bundle</span>
+                        <strong>{bundleComparison ? "Ready" : "Idle"}</strong>
+                      </div>
+                      <label>
+                        对比对象
+                        <select value={compareBundleId} onChange={(event) => setCompareBundleId(event.target.value)}>
+                          <option value="">不对比</option>
+                          {workspace.compiledBundles
+                            .filter((item) => item.bundleId !== selectedBundle.bundleId)
+                            .map((item) => (
+                              <option key={item.bundleId} value={item.bundleId}>
+                                {(item.presetName || item.bundleId.slice(0, 8)) + " / " + new Date(item.builtAt * 1000).toLocaleString()}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      {bundleComparison ? (
+                        <>
+                          <div className="session-chip">
+                            <span>project delta {bundleComparison.projectCountDelta}</span>
+                            <span>RU delta {bundleComparison.retrievalUnitDelta}</span>
+                            <span>metric delta {bundleComparison.metricEvidenceDelta}</span>
+                            <span>term delta {bundleComparison.terminologyDelta}</span>
+                          </div>
+                          <p>Added projects: {bundleComparison.addedProjects.join(" / ") || "--"}</p>
+                          <p>Removed projects: {bundleComparison.removedProjects.join(" / ") || "--"}</p>
+                          <p>Added focus topics: {bundleComparison.addedFocusTopics.join(" / ") || "--"}</p>
+                          <p>Removed focus topics: {bundleComparison.removedFocusTopics.join(" / ") || "--"}</p>
+                        </>
+                      ) : (
+                        <p className="library-empty">选择另一个 bundle 后，这里会显示项目覆盖和回答素材规模的差异。</p>
+                      )}
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <p className="library-empty">这个 bundle 不存在或还没有生成。</p>
