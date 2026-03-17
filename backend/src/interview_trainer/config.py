@@ -16,7 +16,7 @@ def _first_non_empty(*values: str) -> str:
 class GenerationLaneSettings:
     provider: str = "template"
     api_key: str = ""
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str = "https://subrouter.ai/v1"
     model: str = ""
     request_timeout_s: float = 30.0
     temperature: float = 0.7
@@ -31,15 +31,15 @@ class GenerationLaneSettings:
 class GenerationSettings:
     provider: str = "template"
     openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
+    openai_base_url: str = "https://subrouter.ai/v1"
     fast_provider: str = "template"
     fast_api_key: str = ""
-    fast_base_url: str = "https://api.openai.com/v1"
+    fast_base_url: str = "https://subrouter.ai/v1"
     fast_model: str = "gpt-4.1-mini"
     fast_request_timeout_s: float = 30.0
     smart_provider: str = "template"
     smart_api_key: str = ""
-    smart_base_url: str = "https://api.openai.com/v1"
+    smart_base_url: str = "https://subrouter.ai/v1"
     smart_model: str = "gpt-4.1"
     smart_request_timeout_s: float = 30.0
     starter_stream_enabled: bool = True
@@ -57,9 +57,9 @@ class GenerationSettings:
         base_url = (
             _first_non_empty(
                 os.getenv("INTERVIEW_TRAINER_LLM_BASE_URL", ""),
-                os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                os.getenv("OPENAI_BASE_URL", "https://subrouter.ai/v1"),
             )
-            or "https://api.openai.com/v1"
+            or "https://subrouter.ai/v1"
         ).rstrip("/")
         request_timeout_s = float(os.getenv("INTERVIEW_TRAINER_REQUEST_TIMEOUT_S", "30"))
         return cls(
@@ -70,7 +70,7 @@ class GenerationSettings:
             fast_api_key=_first_non_empty(os.getenv("INTERVIEW_TRAINER_FAST_API_KEY", ""), api_key),
             fast_base_url=(
                 _first_non_empty(os.getenv("INTERVIEW_TRAINER_FAST_BASE_URL", ""), base_url)
-                or "https://api.openai.com/v1"
+                or "https://subrouter.ai/v1"
             ).rstrip("/"),
             fast_model=os.getenv("INTERVIEW_TRAINER_FAST_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini",
             fast_request_timeout_s=float(
@@ -80,7 +80,7 @@ class GenerationSettings:
             smart_api_key=_first_non_empty(os.getenv("INTERVIEW_TRAINER_SMART_API_KEY", ""), api_key),
             smart_base_url=(
                 _first_non_empty(os.getenv("INTERVIEW_TRAINER_SMART_BASE_URL", ""), base_url)
-                or "https://api.openai.com/v1"
+                or "https://subrouter.ai/v1"
             ).rstrip("/"),
             smart_model=os.getenv("INTERVIEW_TRAINER_SMART_MODEL", "gpt-4.1").strip() or "gpt-4.1",
             smart_request_timeout_s=float(
@@ -127,7 +127,7 @@ class GenerationSettings:
 class TranscriptionSettings:
     provider: str = "template"
     openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
+    openai_base_url: str = "https://subrouter.ai/v1"
     model: str = "gpt-4o-mini-transcribe"
     realtime_ws_url: str = ""
     realtime_input_sample_rate: int = 24000
@@ -159,7 +159,7 @@ class TranscriptionSettings:
         return cls(
             provider=os.getenv("INTERVIEW_TRAINER_ASR_PROVIDER", "template").strip().lower() or "template",
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-            openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            openai_base_url=os.getenv("OPENAI_BASE_URL", "https://subrouter.ai/v1").rstrip("/"),
             model=(
                 os.getenv("INTERVIEW_TRAINER_ASR_MODEL", "gpt-4o-mini-transcribe").strip()
                 or "gpt-4o-mini-transcribe"

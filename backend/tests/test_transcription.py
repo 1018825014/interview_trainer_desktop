@@ -525,7 +525,7 @@ class OpenAITranscriptionProviderTests(unittest.TestCase):
         settings = TranscriptionSettings(
             provider="openai",
             openai_api_key="test-key",
-            openai_base_url="https://api.openai.com/v1",
+            openai_base_url="https://subrouter.ai/v1",
             model="gpt-4o-mini-transcribe",
             language="en",
         )
@@ -553,7 +553,7 @@ class OpenAITranscriptionProviderTests(unittest.TestCase):
 
         self.assertEqual(result.text, "hello world")
         self.assertEqual(result.language, "en")
-        self.assertEqual(captured_request["url"], "https://api.openai.com/v1/audio/transcriptions")
+        self.assertEqual(captured_request["url"], "https://subrouter.ai/v1/audio/transcriptions")
         self.assertEqual(captured_request["method"], "POST")
         self.assertIn("multipart/form-data", captured_request["content_type"])
         self.assertEqual(captured_request["authorization"], "Bearer test-key")
