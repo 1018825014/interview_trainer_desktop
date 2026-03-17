@@ -5,6 +5,7 @@ export type TurnMode =
   | "candidate_answering";
 
 export type AnswerStatusView = "pending" | "starter_streaming" | "starter_ready" | "complete" | "failed";
+export type PrewarmStatusView = "warming" | "streaming" | "ready" | "failed" | "cancelled";
 
 export interface TranscriptFeedItem {
   speaker: "interviewer" | "candidate";
@@ -184,6 +185,16 @@ export interface PartialTranscriptView {
   updated_at: number;
 }
 
+export interface PrewarmView {
+  turnId: string;
+  question: string;
+  status: PrewarmStatusView;
+  textPreview: string;
+  starterStreamMs: number | null;
+  starterMs: number | null;
+  error: string;
+}
+
 export interface LiveBridgeView {
   bridge_id: string;
   audio_session_id: string;
@@ -206,6 +217,7 @@ export interface LiveBridgeView {
   last_activity_at: number | null;
   recent_transcripts: LiveBridgeTranscriptView[];
   last_answer: any | null;
+  last_prewarm: PrewarmView | null;
   last_signal: SignalGateView | null;
   last_skip_reason: string;
   source_state: Record<string, BridgeSourceStateView>;
@@ -222,6 +234,7 @@ export interface AnswerView {
   starter: AnswerDraftView;
   full: AnswerDraftView;
   evidence: string[];
+  prewarmedStarter: boolean;
   metrics: {
     starterStreamMs: number | null;
     starterMs: number | null;

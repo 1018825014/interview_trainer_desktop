@@ -95,6 +95,7 @@ export const sampleAnswer: AnswerView = {
     "Retrieval",
     "src/orchestrator/workflow.py",
   ],
+  prewarmedStarter: false,
   metrics: {
     starterStreamMs: 210,
     starterMs: 420,

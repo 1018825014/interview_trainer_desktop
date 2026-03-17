@@ -43,6 +43,8 @@ The future spec records what still needs to be built next.
 - Starter prewarm:
   - interviewer partial transcripts can prewarm a `starter`
   - locked questions can reuse the warmed fast-lane draft instead of always starting cold
+  - backend now exposes serialized prewarm state for session/runtime polling
+  - desktop UI now shows prewarm status, preview text, and warm-start metrics
 - Streaming starter answer state:
   - `pending`
   - `starter_streaming`
@@ -96,7 +98,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `34/34` passing
+- Backend tests: `35/35` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -113,6 +115,11 @@ Recommended current setup:
 - Runtime prewarm regression:
   - partial interviewer transcript now prewarms the starter lane
   - locked question reuses the warmed starter when the partial and final question match
+- Runtime prewarm visibility:
+  - session responses now include `prewarm`
+  - session snapshots include active `prewarms`
+  - live bridge responses include `last_prewarm`
+  - answer UI marks reused warm starts with `prewarmed starter`
 
 ## Known gaps
 

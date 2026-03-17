@@ -103,6 +103,7 @@ class InterviewTrainerService:
                 session.actual_candidate_history.append(event.text.strip())
 
             decision = turn_manager.ingest(event)
+            self._prune_stale_prewarms(session_id, keep_turn_id=decision.turn_id)
             self._maybe_start_prewarm(session_id, session, turn_manager, event, decision)
             if not decision.should_generate:
                 timer_decision = turn_manager.tick(event.ts_end)
@@ -119,6 +120,7 @@ class InterviewTrainerService:
                     asdict(item)
                     for item in TerminologyCorrector(session.knowledge.terminology).inspect(event)
                 ],
+                "prewarm": self._serialize_prewarm(session_id, decision.turn_id),
             }
             response.update(self._build_answer_payload(session_id, session, decision))
             return response
@@ -134,6 +136,7 @@ class InterviewTrainerService:
                     "overlap_detected": decision.overlap_detected,
                 },
                 "corrections": [],
+                "prewarm": self._serialize_prewarm(session_id, decision.turn_id),
             }
             response.update(self._build_answer_payload(session_id, session, decision))
             return response
@@ -147,6 +150,11 @@ class InterviewTrainerService:
                 "briefing": asdict(session.briefing),
                 "transcript_history": [asdict(item) for item in session.transcript_history],
                 "actual_candidate_history": session.actual_candidate_history,
+                "prewarms": [
+                    payload
+                    for turn_id in sorted(self.pending_prewarm_jobs.get(session_id, {}))
+                    if (payload := self._serialize_prewarm(session_id, turn_id)) is not None
+                ],
                 "answers": session.answer_history,
             }
 
@@ -331,6 +339,22 @@ class InterviewTrainerService:
             candidate_history=session.actual_candidate_history,
         )
 
+    def _prune_stale_prewarms(self, session_id: str, *, keep_turn_id: str | None) -> None:
+        pending = self.pending_prewarm_jobs.get(session_id)
+        if not pending:
+            return
+        for turn_id in list(pending):
+            if keep_turn_id and turn_id == keep_turn_id:
+                continue
+            self._discard_prewarm(session_id, turn_id)
+
+    def _discard_prewarm(self, session_id: str, turn_id: str) -> None:
+        prewarm = self.pending_prewarm_jobs.get(session_id, {}).pop(turn_id, None)
+        if prewarm is None:
+            return
+        if not prewarm.starter_future.done():
+            prewarm.starter_future.cancel()
+
     def _pop_matching_prewarm(
         self,
         session_id: str,
@@ -348,4 +372,49 @@ class InterviewTrainerService:
         if question.startswith(seed) or seed.startswith(question) or seed in question or question in seed:
             prewarm.question = question
             return prewarm
+        if not prewarm.starter_future.done():
+            prewarm.starter_future.cancel()
         return None
+
+    def _serialize_prewarm(self, session_id: str, turn_id: str | None) -> dict | None:
+        if not turn_id:
+            return None
+        prewarm = self.pending_prewarm_jobs.get(session_id, {}).get(turn_id)
+        if prewarm is None:
+            return None
+
+        status = "warming"
+        text_preview = ""
+        starter_stream_ms = None
+        starter_ms = None
+        error = ""
+
+        snapshot = prewarm.starter_stream_state.snapshot() if prewarm.starter_stream_state is not None else None
+        if snapshot is not None and snapshot.parsed_text.strip():
+            text_preview = snapshot.parsed_text.strip()
+            if snapshot.first_partial_at_perf is not None:
+                starter_stream_ms = round((snapshot.first_partial_at_perf - prewarm.started_at) * 1000, 2)
+            status = "streaming"
+
+        if prewarm.starter_future.cancelled():
+            status = "cancelled"
+        elif prewarm.starter_future.done():
+            exc = prewarm.starter_future.exception()
+            if exc is not None:
+                status = "failed"
+                error = str(exc)
+            else:
+                outcome = prewarm.starter_future.result()
+                status = "ready"
+                text_preview = outcome.draft.text
+                starter_ms = round(outcome.latency_ms, 2)
+
+        return {
+            "turn_id": turn_id,
+            "question": prewarm.question,
+            "status": status,
+            "text_preview": text_preview,
+            "starter_stream_ms": starter_stream_ms,
+            "starter_ms": starter_ms,
+            "error": error,
+        }

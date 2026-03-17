@@ -180,6 +180,7 @@ class LiveTranscriptionBridge:
     last_activity_at: float | None = None
     recent_transcripts: list[dict[str, Any]] = field(default_factory=list)
     last_answer: dict[str, Any] | None = None
+    last_prewarm: dict[str, Any] | None = None
     pending_turn_ids: list[str] = field(default_factory=list)
     last_signal: dict[str, Any] | None = None
     last_skip_reason: str = ""
@@ -211,6 +212,7 @@ class LiveTranscriptionBridge:
             "last_activity_at": self.last_activity_at,
             "recent_transcripts": copy.deepcopy(self.recent_transcripts),
             "last_answer": copy.deepcopy(self.last_answer),
+            "last_prewarm": copy.deepcopy(self.last_prewarm),
             "last_signal": copy.deepcopy(self.last_signal),
             "last_skip_reason": self.last_skip_reason,
             "source_state": {key: value.to_dict() for key, value in self.source_state.items()},
@@ -724,11 +726,13 @@ class AudioTranscriptionService:
             transcript = dict(result["transcript"])
             interview = result.get("interview", {})
             answer = interview.get("answer")
+            prewarm = interview.get("prewarm")
             bridge.partial_transcripts.pop(transcript["source"], None)
             source_state = bridge.source_state.get(transcript["source"])
             if source_state is not None:
                 source_state.partial_text = ""
                 source_state.partial_updated_at = None
+            bridge.last_prewarm = copy.deepcopy(prewarm) if prewarm else None
             if answer:
                 transcript["answer_turn_id"] = answer.get("turn_id", "")
                 transcript["answer_status"] = answer.get("status", "")

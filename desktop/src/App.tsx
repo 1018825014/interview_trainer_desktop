@@ -45,6 +45,7 @@ import {
   KnowledgeWorkspaceView,
   LiveBridgeView,
   PartialTranscriptView,
+  PrewarmView,
   SessionBriefView,
   TranscriptFeedItem,
 } from "./types";
@@ -67,6 +68,7 @@ function App() {
   const [lastTranscription, setLastTranscription] = useState<AudioTranscriptionView | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptFeedItem[]>(sampleTranscripts);
   const [partialTranscripts, setPartialTranscripts] = useState<PartialTranscriptView[]>([]);
+  const [prewarm, setPrewarm] = useState<PrewarmView | null>(null);
   const [answer, setAnswer] = useState<AnswerView>(sampleAnswer);
   const [workspace, setWorkspace] = useState<KnowledgeWorkspaceView>(sampleKnowledgeWorkspace);
   const [workspaceImportPath, setWorkspaceImportPath] = useState("");
@@ -192,6 +194,7 @@ function App() {
           setErrorMessage(latest.last_error);
         }
         setPartialTranscripts(latest.partial_transcripts ?? []);
+        setPrewarm(mapBackendPrewarm(latest.last_prewarm));
         if (latest.recent_transcripts.length > 0) {
           const recent = latest.recent_transcripts.slice(-6);
           setTranscripts(
@@ -431,6 +434,7 @@ function App() {
       })) as LiveBridgeView;
       setLiveBridge(createdBridge);
       setPartialTranscripts(createdBridge.partial_transcripts ?? []);
+      setPrewarm(mapBackendPrewarm(createdBridge.last_prewarm));
       setDemoStatus("ready");
     } catch (error) {
       setDemoStatus("error");
@@ -447,6 +451,7 @@ function App() {
       const stopped = (await stopLiveBridge(backendBaseUrl, liveBridge.bridge_id)) as LiveBridgeView;
       setLiveBridge(stopped);
       setPartialTranscripts(stopped.partial_transcripts ?? []);
+      setPrewarm(mapBackendPrewarm(stopped.last_prewarm));
       if (stopped.last_answer) {
         const mapped = mapBackendAnswer(stopped.last_answer);
         setAnswer(mapped);
@@ -521,6 +526,7 @@ function App() {
 
       if (result.interview) {
         setCorrections((result.interview.corrections ?? []) as CorrectionSuggestionView[]);
+        setPrewarm(mapBackendPrewarm(result.interview.prewarm));
         if (result.interview.answer) {
           const mapped = mapBackendAnswer(result.interview.answer);
           setAnswer(mapped);
@@ -562,6 +568,7 @@ function App() {
         },
       ]);
       setCorrections((transcriptResponse.corrections ?? []) as CorrectionSuggestionView[]);
+      setPrewarm(mapBackendPrewarm(transcriptResponse.prewarm));
 
       if (immediateAnswer) {
         setAnswer(mapBackendAnswer(immediateAnswer));
@@ -971,6 +978,17 @@ function App() {
             </div>
           ) : null}
 
+          {prewarm ? (
+            <div className="route-banner">
+              <span>Starter Prewarm</span>
+              <p>
+                {prewarm.status} | turn {prewarm.turnId.slice(0, 8)} | stream {formatMetric(prewarm.starterStreamMs)} |
+                starter {formatMetric(prewarm.starterMs)} | {prewarm.textPreview || prewarm.question}
+                {prewarm.error ? ` | ${prewarm.error}` : ""}
+              </p>
+            </div>
+          ) : null}
+
           {liveBridge?.last_signal ? (
             <div className="route-banner">
               <span>信号门控</span>
@@ -1046,6 +1064,9 @@ function App() {
             <span className="token token-outline">stream {formatMetric(answer.metrics.starterStreamMs)}</span>
             <span className="token token-outline">starter {formatMetric(answer.metrics.starterMs)}</span>
             <span className="token token-outline">full {formatMetric(answer.metrics.fullMs)}</span>
+            {answer.prewarmedStarter ? (
+              <span className="token token-outline">prewarmed starter</span>
+            ) : null}
             {answer.status === "starter_streaming" ? (
               <span className="token token-outline">starter 流式输出中</span>
             ) : null}
@@ -1197,12 +1218,29 @@ function mapBackendAnswer(raw: any): AnswerView {
       evidenceRefs: full?.evidence_refs ?? [],
     },
     evidence: Array.from(evidenceIds),
+    prewarmedStarter: Boolean(raw.prewarmed_starter),
     metrics: {
       starterStreamMs: raw.metrics?.starter_stream_ms ?? null,
       starterMs: raw.metrics?.starter_ms ?? null,
       fullMs: raw.metrics?.full_ms ?? null,
     },
     error: raw.error ?? "",
+  };
+}
+
+function mapBackendPrewarm(raw: any): PrewarmView | null {
+  if (!raw) {
+    return null;
+  }
+
+  return {
+    turnId: String(raw.turn_id ?? ""),
+    question: String(raw.question ?? ""),
+    status: String(raw.status ?? "warming") as PrewarmView["status"],
+    textPreview: String(raw.text_preview ?? ""),
+    starterStreamMs: raw.starter_stream_ms ?? null,
+    starterMs: raw.starter_ms ?? null,
+    error: String(raw.error ?? ""),
   };
 }
 
