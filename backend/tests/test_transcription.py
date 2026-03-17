@@ -12,9 +12,10 @@ from interview_trainer.transcription import (
     OpenAITranscriptionProvider,
     ProviderTranscript,
 )
+from interview_trainer.realtime_transcription import RealtimeChunkMetadata
 from interview_trainer.realtime_transcription import RealtimeTranscriptEvent
 from interview_trainer.realtime_transcription import RealtimeTranscriptDeltaEvent
-from interview_trainer.types import AudioSource
+from interview_trainer.types import AudioSource, Speaker
 
 
 def _speech_pcm(*, amplitude: int = 1200, samples: int = 4000, switch_every: int = 12) -> bytes:
@@ -654,6 +655,100 @@ class OpenAITranscriptionProviderTests(unittest.TestCase):
         self.assertIn(b'name="prompt"', captured_request["body"])
         self.assertIn(b"technical interview", captured_request["body"])
         self.assertIn(b'filename="chunk.wav"', captured_request["body"])
+
+
+class RealtimeStreamFactoryTests(unittest.TestCase):
+    def test_default_realtime_stream_factory_returns_alibaba_stream_for_alibaba_provider(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+        )
+
+        stream = AudioTranscriptionService._default_realtime_stream_factory(
+            settings,
+            AudioSource.SYSTEM,
+            "zh",
+            "",
+        )
+
+        self.assertEqual(stream.provider_name, "alibaba_realtime")
+        self.assertEqual(stream.model_name, "fun-asr-realtime-2026-02-28")
+
+    def test_alibaba_realtime_stream_translates_result_generated_events(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+        )
+        stream = AudioTranscriptionService._default_realtime_stream_factory(
+            settings,
+            AudioSource.SYSTEM,
+            "zh",
+            "",
+        )
+        metadata = RealtimeChunkMetadata(
+            source=AudioSource.SYSTEM,
+            speaker=Speaker.INTERVIEWER,
+            final=True,
+            ts_start=0.0,
+            ts_end=1.0,
+            duration_ms=1000.0,
+            num_frames=4,
+            language="zh",
+            prompt="",
+            session_snapshot={},
+            signal={},
+            interview_session_id="session-1",
+            auto_tick_offset_s=1.0,
+            turn_id="turn-1",
+        )
+
+        stream._socket = object()
+        stream._drain_socket = lambda **kwargs: None
+        stream._pending_by_task_id["task-1"] = metadata
+        stream._handle_event(
+            {
+                "header": {"event": "result-generated", "task_id": "task-1"},
+                "payload": {
+                    "output": {
+                        "sentence": {
+                            "text": "请介绍一下你的RAG项目",
+                            "sentence_end": False,
+                            "begin_time": 0,
+                            "end_time": None,
+                        }
+                    }
+                },
+            }
+        )
+
+        partials = stream.poll_partials(limit=4)
+        self.assertEqual(len(partials), 1)
+        self.assertEqual(partials[0].text, "请介绍一下你的RAG项目")
+        self.assertEqual(partials[0].delta, "请介绍一下你的RAG项目")
+
+        stream._handle_event(
+            {
+                "header": {"event": "result-generated", "task_id": "task-1"},
+                "payload": {
+                    "output": {
+                        "sentence": {
+                            "text": "请介绍一下你的RAG项目",
+                            "sentence_end": True,
+                            "begin_time": 0,
+                            "end_time": 1320,
+                        }
+                    }
+                },
+            }
+        )
+
+        completed = stream.poll_completed(limit=4)
+        self.assertEqual(len(completed), 1)
+        self.assertEqual(completed[0].provider, "alibaba_realtime")
+        self.assertEqual(completed[0].text, "请介绍一下你的RAG项目")
+        self.assertEqual(completed[0].language, "zh")
 
 
 if __name__ == "__main__":

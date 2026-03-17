@@ -13,6 +13,7 @@ from uuid import uuid4
 from .audio import AudioCaptureConfig, AudioFrameEnvelope, AudioSessionManager
 from .config import TranscriptionSettings
 from .realtime_transcription import (
+    AlibabaRealtimeTranscriptionStream,
     OpenAIRealtimeTranscriptionStream,
     RealtimeChunkMetadata,
     RealtimeTranscriptDeltaEvent,
@@ -1287,6 +1288,13 @@ class AudioTranscriptionService:
         language: str,
         prompt: str,
     ) -> RealtimeTranscriptionStream:
+        if settings.use_alibaba_realtime:
+            return AlibabaRealtimeTranscriptionStream(
+                settings,
+                source=source,
+                language=language,
+                prompt=prompt,
+            )
         return OpenAIRealtimeTranscriptionStream(
             settings,
             source=source,
