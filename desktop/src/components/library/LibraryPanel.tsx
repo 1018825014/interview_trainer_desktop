@@ -12,15 +12,18 @@ import {
   deleteLibraryDocument,
   deleteLibraryProject,
   getLibraryBundleDetail,
+  getLibraryProjectAuthoringPack,
   getLibraryProjectCompiledPreview,
   getLibraryWorkspaceCompiledPreview,
   getLibraryWorkspace,
   importLibraryProjectPath,
   listLibraryWorkspaces,
+  previewLibraryProjectAuthoringPack,
   reindexLibraryRepo,
   reuseLibraryBundleSessionPayload,
   updateLibraryDocument,
   updateLibraryOverlay,
+  updateLibraryProjectAuthoringPack,
   updateLibraryPreset,
   updateLibraryProject,
   updateLibraryWorkspace,
@@ -34,6 +37,7 @@ import type {
   LibraryOverlayRecord,
   LibraryPresetRecord,
   LibraryDocumentRecord,
+  LibraryProjectAuthoringPackRecord,
   LibraryProjectCompiledPreviewRecord,
   LibraryProfileRecord,
   LibraryProjectRecord,
@@ -282,6 +286,8 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
   const [statusMessage, setStatusMessage] = useState("准备加载本地资料库");
   const [latestPayload, setLatestPayload] = useState<LibrarySessionPayload | null>(null);
   const [projectCompiledPreview, setProjectCompiledPreview] = useState<LibraryProjectCompiledPreviewRecord | null>(null);
+  const [projectAuthoringPack, setProjectAuthoringPack] = useState<LibraryProjectAuthoringPackRecord | null>(null);
+  const [projectAuthoringStatus, setProjectAuthoringStatus] = useState("");
   const [workspaceCompiledPreview, setWorkspaceCompiledPreview] = useState<LibraryWorkspaceCompiledPreviewRecord | null>(null);
   const [workspacePreviewFilters, setWorkspacePreviewFilters] = useState({
     projectId: "",
@@ -420,6 +426,40 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       cancelled = true;
     };
   }, [backendBaseUrl, backendOnline, selectedProject?.projectId, workspace?.updatedAt, workspace?.compileSummary?.modules]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjectAuthoringPack() {
+      if (!selectedProject) {
+        setProjectAuthoringPack(null);
+        setProjectAuthoringStatus("");
+        return;
+      }
+      if (!backendOnline) {
+        setProjectAuthoringPack(null);
+        setProjectAuthoringStatus("后端离线，批量预检与原子保存暂不可用。");
+        return;
+      }
+      try {
+        const pack = await getLibraryProjectAuthoringPack(backendBaseUrl, selectedProject.projectId);
+        if (!cancelled) {
+          setProjectAuthoringPack(pack);
+          setProjectAuthoringStatus("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setProjectAuthoringPack(null);
+          setProjectAuthoringStatus(error instanceof Error ? error.message : "加载 authoring pack 失败。");
+        }
+      }
+    }
+
+    void loadProjectAuthoringPack();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl, backendOnline, selectedProject?.projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -586,6 +626,33 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           }
         : current,
     );
+  }
+
+  function applyProjectAuthoringPack(projectId: string, pack: LibraryProjectAuthoringPackRecord) {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            updatedAt: Date.now() / 1000,
+            compileSummary: null,
+            knowledge: {
+              ...current.knowledge,
+              projects: current.knowledge.projects.map((item) =>
+                item.projectId === projectId
+                  ? {
+                      ...item,
+                      manualEvidence: pack.manualEvidence,
+                      manualMetrics: pack.manualMetrics,
+                      manualRetrievalUnits: pack.manualRetrievalUnits,
+                    }
+                  : item,
+              ),
+            },
+          }
+        : current,
+    );
+    setProjectCompiledPreview(null);
+    setWorkspaceCompiledPreview(null);
   }
 
   function replaceProjectDocument(projectId: string, document: LibraryDocumentRecord) {
@@ -906,6 +973,48 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       setStatusMessage(`项目 ${saved.name} 已保存。`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "保存项目失败。");
+    }
+  }
+
+  async function handlePreviewProjectAuthoringPack(payload: Record<string, unknown>) {
+    if (!backendOnline || !selectedProject) {
+      setProjectAuthoringStatus("请先连接后端并选择项目。");
+      return;
+    }
+    try {
+      const preview = await previewLibraryProjectAuthoringPack(
+        backendBaseUrl,
+        selectedProject.projectId,
+        payload,
+      );
+      setProjectAuthoringPack(preview);
+      setProjectAuthoringStatus(
+        preview.validation.valid
+          ? "批量草稿预检通过，可以直接应用。"
+          : `预检发现 ${preview.validation.errors.length} 个错误，请先修正。`,
+      );
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "预检 authoring pack 失败。");
+    }
+  }
+
+  async function handleApplyProjectAuthoringPack(payload: Record<string, unknown>) {
+    if (!backendOnline || !selectedProject) {
+      setProjectAuthoringStatus("请先连接后端并选择项目。");
+      return;
+    }
+    try {
+      const result = await updateLibraryProjectAuthoringPack(
+        backendBaseUrl,
+        selectedProject.projectId,
+        payload,
+      );
+      setProjectAuthoringPack(result);
+      applyProjectAuthoringPack(selectedProject.projectId, result);
+      setProjectAuthoringStatus("批量素材已保存，当前项目的编译预览已标记为需要重新 compile。");
+      setStatusMessage(`项目 ${selectedProject.name} 的批量 authoring pack 已应用。`);
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "应用 authoring pack 失败。");
     }
   }
 
@@ -1414,8 +1523,12 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           {selection?.type === "project" ? (
             <ProjectEditor
               project={selectedProject}
+              authoringPack={projectAuthoringPack}
+              authoringStatus={projectAuthoringStatus}
               compiledPreview={projectCompiledPreview}
               onChange={updateProject}
+              onPreviewAuthoringPack={handlePreviewProjectAuthoringPack}
+              onApplyAuthoringPack={handleApplyProjectAuthoringPack}
               onCreateDocument={handleCreateProjectDocument}
               onSaveDocument={handleSaveProjectDocument}
               onDeleteDocument={handleDeleteProjectDocument}

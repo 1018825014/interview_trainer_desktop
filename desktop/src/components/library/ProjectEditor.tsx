@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
+
 import type {
   LibraryCodeFileRecord,
+  LibraryProjectAuthoringPackRecord,
   LibraryProjectCompiledPreviewRecord,
   LibraryDocumentRecord,
   LibraryManualEvidenceRecord,
@@ -10,8 +13,12 @@ import type {
 
 interface ProjectEditorProps {
   project: LibraryProjectRecord | null;
+  authoringPack: LibraryProjectAuthoringPackRecord | null;
+  authoringStatus: string;
   compiledPreview: LibraryProjectCompiledPreviewRecord | null;
   onChange: (project: LibraryProjectRecord) => void;
+  onPreviewAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
+  onApplyAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
   onCreateDocument: () => void;
   onSaveDocument: (document: LibraryDocumentRecord) => void;
   onDeleteDocument: (document: LibraryDocumentRecord) => void;
@@ -29,6 +36,81 @@ function splitLines(value: string): string[] {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function emptyAuthoringDraft(): string {
+  return JSON.stringify(
+    {
+      manual_evidence: [],
+      manual_metrics: [],
+      manual_retrieval_units: [],
+    },
+    null,
+    2,
+  );
+}
+
+function buildAuthoringDraft(project: LibraryProjectRecord | null): string {
+  if (!project) {
+    return emptyAuthoringDraft();
+  }
+  return JSON.stringify(
+    {
+      manual_evidence: project.manualEvidence.map((item) => ({
+        evidence_id: item.evidenceId,
+        module_id: item.moduleId,
+        evidence_type: item.evidenceType,
+        title: item.title,
+        summary: item.summary,
+        source_kind: item.sourceKind,
+        source_ref: item.sourceRef,
+        confidence: item.confidence,
+      })),
+      manual_metrics: project.manualMetrics.map((item) => ({
+        evidence_id: item.evidenceId,
+        module_id: item.moduleId,
+        metric_name: item.metricName,
+        metric_value: item.metricValue,
+        baseline: item.baseline,
+        method: item.method,
+        environment: item.environment,
+        source_note: item.sourceNote,
+        confidence: item.confidence,
+      })),
+      manual_retrieval_units: project.manualRetrievalUnits.map((item) => ({
+        unit_id: item.unitId,
+        unit_type: item.unitType,
+        module_id: item.moduleId,
+        question_forms: item.questionForms,
+        short_answer: item.shortAnswer,
+        long_answer: item.longAnswer,
+        key_points: item.keyPoints,
+        supporting_refs: item.supportingRefs,
+        hooks: item.hooks,
+        safe_claims: item.safeClaims,
+      })),
+    },
+    null,
+    2,
+  );
+}
+
+function parseAuthoringDraft(draft: string): { payload: Record<string, unknown> | null; error: string } {
+  try {
+    const parsed = JSON.parse(draft);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        payload: null,
+        error: "Authoring pack must be a JSON object with manual_evidence / manual_metrics / manual_retrieval_units.",
+      };
+    }
+    return { payload: parsed as Record<string, unknown>, error: "" };
+  } catch (error) {
+    return {
+      payload: null,
+      error: error instanceof Error ? error.message : "Invalid JSON draft.",
+    };
+  }
 }
 
 function updateDocument(project: LibraryProjectRecord, documentId: string, patch: Partial<LibraryDocumentRecord>): LibraryProjectRecord {
@@ -151,14 +233,46 @@ function deleteManualRetrievalUnit(project: LibraryProjectRecord, unitId: string
 
 export function ProjectEditor({
   project,
+  authoringPack,
+  authoringStatus,
   compiledPreview,
   onChange,
+  onPreviewAuthoringPack,
+  onApplyAuthoringPack,
   onCreateDocument,
   onSaveDocument,
   onDeleteDocument,
   onSave,
   onDelete,
 }: ProjectEditorProps) {
+  const [authoringDraft, setAuthoringDraft] = useState(() => buildAuthoringDraft(project));
+  const [authoringDraftError, setAuthoringDraftError] = useState("");
+
+  useEffect(() => {
+    setAuthoringDraft(buildAuthoringDraft(project));
+    setAuthoringDraftError("");
+  }, [project?.projectId]);
+
+  function handlePreviewDraft() {
+    const parsed = parseAuthoringDraft(authoringDraft);
+    if (!parsed.payload) {
+      setAuthoringDraftError(parsed.error);
+      return;
+    }
+    setAuthoringDraftError("");
+    void onPreviewAuthoringPack(parsed.payload);
+  }
+
+  function handleApplyDraft() {
+    const parsed = parseAuthoringDraft(authoringDraft);
+    if (!parsed.payload) {
+      setAuthoringDraftError(parsed.error);
+      return;
+    }
+    setAuthoringDraftError("");
+    void onApplyAuthoringPack(parsed.payload);
+  }
+
   if (!project) {
     return (
       <section className="library-editor">
@@ -454,6 +568,90 @@ export function ProjectEditor({
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="meta-card">
+        <div className="panel-head compact">
+          <span>Batch Authoring Pack</span>
+          <strong>{authoringPack?.validation.valid ? "Validated" : "Draft"}</strong>
+        </div>
+        <p className="library-empty">
+          Replace manual evidence, metrics, and retrieval units in one JSON payload. Use preview before apply so duplicate ids
+          and missing supporting refs are caught early.
+        </p>
+        <div className="action-row">
+          <button
+            className="ghost small"
+            onClick={() => {
+              setAuthoringDraft(buildAuthoringDraft(project));
+              setAuthoringDraftError("");
+            }}
+          >
+            Load Current Draft
+          </button>
+          <button className="ghost small" onClick={handlePreviewDraft}>
+            Preview Draft
+          </button>
+          <button className="ghost accent small" onClick={handleApplyDraft}>
+            Apply Pack
+          </button>
+        </div>
+        <label>
+          Authoring JSON
+          <textarea
+            className="authoring-pack-textarea"
+            rows={18}
+            value={authoringDraft}
+            onChange={(event) => setAuthoringDraft(event.target.value)}
+          />
+        </label>
+        {authoringDraftError ? <p className="library-error">{authoringDraftError}</p> : null}
+        {authoringStatus ? <p className="authoring-status">{authoringStatus}</p> : null}
+        {authoringPack ? (
+          <>
+            <div className="session-chip">
+              <span>{authoringPack.summary.manualEvidenceCount} evidence</span>
+              <span>{authoringPack.summary.manualMetricCount} metrics</span>
+              <span>{authoringPack.summary.manualRetrievalUnitCount} RU</span>
+              <span>{authoringPack.summary.usedSupportingRefCount}/{authoringPack.summary.availableSupportingRefCount} refs used</span>
+            </div>
+            {authoringPack.availableSupportingRefs.length > 0 ? (
+              <div className="tokens">
+                {authoringPack.availableSupportingRefs.map((item) => (
+                  <span key={item.refId} className="token token-outline">
+                    {item.refId} ({item.refKind})
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {authoringPack.validation.errors.length > 0 ? (
+              <div className="authoring-validation">
+                <div className="panel-head compact">
+                  <span>Errors</span>
+                  <strong>{authoringPack.validation.errors.length}</strong>
+                </div>
+                {authoringPack.validation.errors.map((item) => (
+                  <p key={item} className="library-error">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            {authoringPack.validation.warnings.length > 0 ? (
+              <div className="authoring-validation">
+                <div className="panel-head compact">
+                  <span>Warnings</span>
+                  <strong>{authoringPack.validation.warnings.length}</strong>
+                </div>
+                {authoringPack.validation.warnings.map((item) => (
+                  <p key={item} className="authoring-status">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
 
       <div className="meta-card">

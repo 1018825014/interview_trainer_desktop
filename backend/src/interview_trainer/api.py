@@ -228,6 +228,29 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="project not found") from exc
 
+    @app.get("/api/library/projects/{project_id}/authoring-pack")
+    def get_library_project_authoring_pack(project_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_project_authoring_pack(project_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.post("/api/library/projects/{project_id}/authoring-pack/preview")
+    def preview_library_project_authoring_pack(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.preview_project_authoring_pack(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.put("/api/library/projects/{project_id}/authoring-pack")
+    def replace_library_project_authoring_pack(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.replace_project_authoring_pack(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+        except ValueError as exc:  # pragma: no cover
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/library/projects/{project_id}/compiled-preview")
     def get_library_project_compiled_preview(project_id: str) -> dict[str, Any]:
         try:

@@ -125,7 +125,7 @@ Recommended current setup:
 
 - Multi-interviewer speaker separation inside the system stream is not implemented
 - Desktop library UX is now usable, but still lacks:
-  - richer authoring ergonomics for bulk editing evidence / retrieval units
+  - copy-from-compiled shortcuts and multi-project templates on top of the new batch authoring pack flow
   - more polished workspace-level artifact browsing for very large libraries
 - Need more real-user testing on:
   - naturalness
@@ -145,6 +145,13 @@ Recommended current setup:
   - Stage 5 runtime answer-plan integration
   - Stage 6 retrieval-unit-first and evidence-aware runtime routing
   - Stage 7 desktop persistent library UX and session activation flow
+  - Stage 8 normalized document assets and repo reindex
+  - Stage 9 manual evidence / metric / retrieval-unit authoring
+  - Stage 10 compiled preview inspection
+  - Stage 11 bundle history compare and reuse
+  - Stage 12 hook-aware retrieval and artifact diffs
+  - Stage 13 workspace preview filters and direct document CRUD
+  - Stage 14 project authoring-pack batch editing and validation
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -451,11 +458,36 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `52/52` passing
+- Stage 14 implemented:
+  - added project-level authoring-pack APIs:
+    - `GET /api/library/projects/{project_id}/authoring-pack`
+    - `POST /api/library/projects/{project_id}/authoring-pack/preview`
+    - `PUT /api/library/projects/{project_id}/authoring-pack`
+  - backend authoring-pack preview now validates:
+    - duplicate supporting-ref ids shared across manual evidence and manual metrics
+    - duplicate retrieval-unit ids
+    - missing `supporting_refs`
+    - warnings for unused supporting refs or retrieval units missing question forms / refs
+  - desktop `ProjectEditor` now includes a dedicated `Batch Authoring Pack` panel that can:
+    - generate a JSON draft from the current project form
+    - preview validation results before saving
+    - show available supporting ref ids for retrieval-unit authoring
+    - apply a validated pack atomically to manual evidence / metrics / retrieval units
+  - applying a batch authoring pack now invalidates local compiled preview state until the next workspace compile
+- Stage 14 verification:
+  - targeted backend tests:
+    - `test_library_api.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `68/68` passing
 - Recommended next implementation order:
   1. deeper answer naturalness tuning based on real interview transcripts
-  2. evidence / retrieval-unit authoring ergonomics and batch editing
-  3. larger-library workspace preview UX polish
-  4. multi-project activation presets with faster compare / switch workflows
+  2. larger-library workspace preview UX polish
+  3. multi-project activation presets with faster compare / switch workflows
+  4. authoring-pack polish:
+     - copy-from-compiled shortcuts
+     - import / export templates across projects
 
 ## Best next debugging tasks
 

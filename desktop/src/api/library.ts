@@ -1,5 +1,7 @@
 import { requestJson } from "./client";
 import type {
+  LibraryAuthoringSupportingRefRecord,
+  LibraryAuthoringValidationRecord,
   LibraryBriefingPayload,
   LibraryBundleComparisonRecord,
   LibraryBundleDetailRecord,
@@ -23,6 +25,8 @@ import type {
   LibraryOverlayRecord,
   LibraryPresetRecord,
   LibraryProfileRecord,
+  LibraryProjectAuthoringPackRecord,
+  LibraryProjectAuthoringSummaryRecord,
   LibraryProjectRecord,
   LibraryRepoSummaryRecord,
   LibraryRoleDocumentRecord,
@@ -166,6 +170,50 @@ function mapProject(raw: any): LibraryProjectRecord {
     repoSummaries: Array.isArray(raw?.repo_summaries) ? raw.repo_summaries.map(mapRepoSummary) : [],
     documents: Array.isArray(raw?.documents) ? raw.documents.map(mapDocument) : [],
     codeFiles: Array.isArray(raw?.code_files) ? raw.code_files.map(mapCodeFile) : [],
+  };
+}
+
+function mapAuthoringSupportingRef(raw: any): LibraryAuthoringSupportingRefRecord {
+  return {
+    refId: asString(raw?.ref_id),
+    refKind: asString(raw?.ref_kind),
+    label: asString(raw?.label),
+  };
+}
+
+function mapAuthoringSummary(raw: any): LibraryProjectAuthoringSummaryRecord {
+  return {
+    manualEvidenceCount: asNumber(raw?.manual_evidence_count),
+    manualMetricCount: asNumber(raw?.manual_metric_count),
+    manualRetrievalUnitCount: asNumber(raw?.manual_retrieval_unit_count),
+    availableSupportingRefCount: asNumber(raw?.available_supporting_ref_count),
+    usedSupportingRefCount: asNumber(raw?.used_supporting_ref_count),
+  };
+}
+
+function mapAuthoringValidation(raw: any): LibraryAuthoringValidationRecord {
+  return {
+    valid: Boolean(raw?.valid),
+    errors: asStringArray(raw?.errors),
+    warnings: asStringArray(raw?.warnings),
+  };
+}
+
+function mapProjectAuthoringPack(raw: any): LibraryProjectAuthoringPackRecord {
+  return {
+    projectId: asString(raw?.project_id),
+    projectName: asString(raw?.project_name),
+    manualEvidence: Array.isArray(raw?.manual_evidence) ? raw.manual_evidence.map(mapManualEvidence) : [],
+    manualMetrics: Array.isArray(raw?.manual_metrics) ? raw.manual_metrics.map(mapManualMetric) : [],
+    manualRetrievalUnits: Array.isArray(raw?.manual_retrieval_units)
+      ? raw.manual_retrieval_units.map(mapManualRetrievalUnit)
+      : [],
+    availableSupportingRefs: Array.isArray(raw?.available_supporting_refs)
+      ? raw.available_supporting_refs.map(mapAuthoringSupportingRef)
+      : [],
+    summary: mapAuthoringSummary(raw?.summary),
+    validation: mapAuthoringValidation(raw?.validation),
+    project: raw?.project ? mapProject(raw.project) : null,
   };
 }
 
@@ -512,6 +560,42 @@ export async function getLibraryProjectCompiledPreview(
     errorMessage: "Failed to load project compiled preview",
   });
   return mapProjectCompiledPreview(payload);
+}
+
+export async function getLibraryProjectAuthoringPack(
+  baseUrl: string,
+  projectId: string,
+): Promise<LibraryProjectAuthoringPackRecord> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/authoring-pack`, {
+    errorMessage: "Failed to load project authoring pack",
+  });
+  return mapProjectAuthoringPack(payload);
+}
+
+export async function previewLibraryProjectAuthoringPack(
+  baseUrl: string,
+  projectId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryProjectAuthoringPackRecord> {
+  const response = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/authoring-pack/preview`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to preview project authoring pack",
+  });
+  return mapProjectAuthoringPack(response);
+}
+
+export async function updateLibraryProjectAuthoringPack(
+  baseUrl: string,
+  projectId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryProjectAuthoringPackRecord> {
+  const response = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/authoring-pack`, {
+    method: "PUT",
+    payload,
+    errorMessage: "Failed to update project authoring pack",
+  });
+  return mapProjectAuthoringPack(response);
 }
 
 export async function getLibraryWorkspaceCompiledPreview(

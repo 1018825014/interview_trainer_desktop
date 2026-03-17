@@ -209,6 +209,38 @@ export interface LibraryProjectRecord {
   codeFiles: LibraryCodeFileRecord[];
 }
 
+export interface LibraryAuthoringSupportingRefRecord {
+  refId: string;
+  refKind: string;
+  label: string;
+}
+
+export interface LibraryProjectAuthoringSummaryRecord {
+  manualEvidenceCount: number;
+  manualMetricCount: number;
+  manualRetrievalUnitCount: number;
+  availableSupportingRefCount: number;
+  usedSupportingRefCount: number;
+}
+
+export interface LibraryAuthoringValidationRecord {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface LibraryProjectAuthoringPackRecord {
+  projectId: string;
+  projectName: string;
+  manualEvidence: LibraryManualEvidenceRecord[];
+  manualMetrics: LibraryManualMetricRecord[];
+  manualRetrievalUnits: LibraryManualRetrievalUnitRecord[];
+  availableSupportingRefs: LibraryAuthoringSupportingRefRecord[];
+  summary: LibraryProjectAuthoringSummaryRecord;
+  validation: LibraryAuthoringValidationRecord;
+  project?: LibraryProjectRecord | null;
+}
+
 export interface LibraryOverlayRecord {
   overlayId: string;
   name: string;

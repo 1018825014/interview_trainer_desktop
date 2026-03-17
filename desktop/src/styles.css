@@ -517,6 +517,33 @@ select optgroup {
   line-height: 1.6;
 }
 
+.authoring-pack-textarea {
+  min-height: 320px;
+  font-family: "Cascadia Code", "JetBrains Mono", monospace;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.library-error,
+.authoring-status {
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+.library-error {
+  color: #ff9f8a;
+}
+
+.authoring-status {
+  color: var(--muted);
+}
+
+.authoring-validation {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .library-checkbox-group {
   margin-bottom: 14px;
 }

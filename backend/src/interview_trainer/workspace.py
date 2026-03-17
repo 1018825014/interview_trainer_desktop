@@ -134,6 +134,47 @@ class WorkspaceManager:
         _, project = self._find_project(project_id)
         return self._serialize_project(project)
 
+    def get_project_authoring_pack(self, project_id: str) -> dict[str, Any]:
+        _, project = self._find_project(project_id)
+        evidence, metrics, units = self._project_authoring_pack_parts(project)
+        return self._build_project_authoring_pack_response(
+            project,
+            manual_evidence=evidence,
+            manual_metrics=metrics,
+            manual_retrieval_units=units,
+        )
+
+    def preview_project_authoring_pack(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        _, project = self._find_project(project_id)
+        evidence, metrics, units = self._normalize_project_authoring_pack_payload(payload)
+        return self._build_project_authoring_pack_response(
+            project,
+            manual_evidence=evidence,
+            manual_metrics=metrics,
+            manual_retrieval_units=units,
+        )
+
+    def replace_project_authoring_pack(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, project = self._find_project(project_id)
+        evidence, metrics, units = self._normalize_project_authoring_pack_payload(payload)
+        response = self._build_project_authoring_pack_response(
+            project,
+            manual_evidence=evidence,
+            manual_metrics=metrics,
+            manual_retrieval_units=units,
+        )
+        validation = response.get("validation", {})
+        if not bool(validation.get("valid")):
+            raise ValueError("; ".join(validation.get("errors", [])) or "Invalid project authoring pack.")
+        project["manual_evidence"] = evidence
+        project["manual_metrics"] = metrics
+        project["manual_retrieval_units"] = units
+        self._invalidate_compiled_artifacts(workspace)
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        response["project"] = self._serialize_project(project)
+        return response
+
     def update_project(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         workspace, project = self._find_project(project_id)
         if "name" in payload:
@@ -159,23 +200,17 @@ class WorkspaceManager:
         if "interviewer_hooks" in payload:
             project["interviewer_hooks"] = self._normalize_lines(payload.get("interviewer_hooks"))
         if "manual_evidence" in payload:
-            project["manual_evidence"] = [
-                self._normalize_manual_evidence(item, index)
-                for index, item in enumerate(payload.get("manual_evidence", []), start=1)
-                if isinstance(item, dict) and (_clean_text(item.get("title")) or _clean_text(item.get("summary")))
-            ]
+            project["manual_evidence"], _, _ = self._normalize_project_authoring_pack_payload(
+                {"manual_evidence": payload.get("manual_evidence", [])}
+            )
         if "manual_metrics" in payload:
-            project["manual_metrics"] = [
-                self._normalize_manual_metric(item, index)
-                for index, item in enumerate(payload.get("manual_metrics", []), start=1)
-                if isinstance(item, dict) and (_clean_text(item.get("metric_name")) or _clean_text(item.get("metric_value")))
-            ]
+            _, project["manual_metrics"], _ = self._normalize_project_authoring_pack_payload(
+                {"manual_metrics": payload.get("manual_metrics", [])}
+            )
         if "manual_retrieval_units" in payload:
-            project["manual_retrieval_units"] = [
-                self._normalize_manual_retrieval_unit(item, index)
-                for index, item in enumerate(payload.get("manual_retrieval_units", []), start=1)
-                if isinstance(item, dict) and (_clean_text(item.get("short_answer")) or _clean_text(item.get("long_answer")))
-            ]
+            _, _, project["manual_retrieval_units"] = self._normalize_project_authoring_pack_payload(
+                {"manual_retrieval_units": payload.get("manual_retrieval_units", [])}
+            )
         if "documents" in payload:
             project["documents"] = [
                 self._normalize_document_asset(item, scope="project", default_title=f"{DEFAULT_PROJECT_DOCUMENT_TITLE} {index}")
@@ -730,6 +765,133 @@ class WorkspaceManager:
             "repo_summaries": [dict(item) for item in project.get("repo_summaries", [])],
             "documents": [self._serialize_document(item) for item in project.get("documents", [])],
             "code_files": [self._serialize_code_file(item) for item in project.get("code_files", [])],
+        }
+
+    def _project_authoring_pack_parts(
+        self,
+        project: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        return (
+            [dict(item) for item in project.get("manual_evidence", []) if isinstance(item, dict)],
+            [dict(item) for item in project.get("manual_metrics", []) if isinstance(item, dict)],
+            [dict(item) for item in project.get("manual_retrieval_units", []) if isinstance(item, dict)],
+        )
+
+    def _normalize_project_authoring_pack_payload(
+        self,
+        payload: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        evidence = [
+            self._normalize_manual_evidence(item, index)
+            for index, item in enumerate(payload.get("manual_evidence", []), start=1)
+            if isinstance(item, dict) and (_clean_text(item.get("title")) or _clean_text(item.get("summary")))
+        ]
+        metrics = [
+            self._normalize_manual_metric(item, index)
+            for index, item in enumerate(payload.get("manual_metrics", []), start=1)
+            if isinstance(item, dict) and (_clean_text(item.get("metric_name")) or _clean_text(item.get("metric_value")))
+        ]
+        retrieval_units = [
+            self._normalize_manual_retrieval_unit(item, index)
+            for index, item in enumerate(payload.get("manual_retrieval_units", []), start=1)
+            if isinstance(item, dict) and (_clean_text(item.get("short_answer")) or _clean_text(item.get("long_answer")))
+        ]
+        return evidence, metrics, retrieval_units
+
+    def _build_project_authoring_pack_response(
+        self,
+        project: dict[str, Any],
+        *,
+        manual_evidence: list[dict[str, Any]],
+        manual_metrics: list[dict[str, Any]],
+        manual_retrieval_units: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        errors: list[str] = []
+        warnings: list[str] = []
+        seen_errors: set[str] = set()
+        seen_warnings: set[str] = set()
+        supporting_ref_index: dict[str, dict[str, str]] = {}
+        referenced_supporting_refs: set[str] = set()
+        seen_unit_ids: set[str] = set()
+
+        def add_error(message: str) -> None:
+            if message not in seen_errors:
+                seen_errors.add(message)
+                errors.append(message)
+
+        def add_warning(message: str) -> None:
+            if message not in seen_warnings:
+                seen_warnings.add(message)
+                warnings.append(message)
+
+        for evidence in manual_evidence:
+            ref_id = _clean_text(evidence.get("evidence_id"))
+            if ref_id in supporting_ref_index:
+                add_error(f"Duplicate supporting ref id: {ref_id}")
+                continue
+            supporting_ref_index[ref_id] = {
+                "ref_id": ref_id,
+                "ref_kind": "evidence",
+                "label": _clean_text(evidence.get("title")) or ref_id,
+            }
+
+        for metric in manual_metrics:
+            ref_id = _clean_text(metric.get("evidence_id"))
+            if ref_id in supporting_ref_index:
+                add_error(f"Duplicate supporting ref id: {ref_id}")
+                continue
+            supporting_ref_index[ref_id] = {
+                "ref_id": ref_id,
+                "ref_kind": "metric",
+                "label": _clean_text(metric.get("metric_name")) or ref_id,
+            }
+
+        for unit in manual_retrieval_units:
+            unit_id = _clean_text(unit.get("unit_id"))
+            if unit_id in seen_unit_ids:
+                add_error(f"Duplicate retrieval unit id: {unit_id}")
+            else:
+                seen_unit_ids.add(unit_id)
+            if not unit.get("question_forms"):
+                add_warning(f"Retrieval unit {unit_id} has no question forms.")
+            if not unit.get("supporting_refs"):
+                add_warning(f"Retrieval unit {unit_id} has no supporting refs.")
+            for ref_id in unit.get("supporting_refs", []):
+                normalized_ref_id = _clean_text(ref_id)
+                if not normalized_ref_id:
+                    continue
+                referenced_supporting_refs.add(normalized_ref_id)
+                if normalized_ref_id not in supporting_ref_index:
+                    add_error(
+                        f"Retrieval unit {unit_id} references missing supporting ref: {normalized_ref_id}"
+                    )
+
+        for ref_id, ref_meta in supporting_ref_index.items():
+            if ref_id not in referenced_supporting_refs:
+                add_warning(f"Supporting ref {ref_meta['label']} ({ref_id}) is not used by any retrieval unit.")
+
+        return {
+            "project_id": _clean_text(project.get("project_id")),
+            "project_name": _clean_text(project.get("name")),
+            "manual_evidence": [self._serialize_manual_evidence(item) for item in manual_evidence],
+            "manual_metrics": [self._serialize_manual_metric(item) for item in manual_metrics],
+            "manual_retrieval_units": [
+                self._serialize_manual_retrieval_unit(item)
+                for item in manual_retrieval_units
+            ],
+            "available_supporting_refs": list(supporting_ref_index.values()),
+            "summary": {
+                "manual_evidence_count": len(manual_evidence),
+                "manual_metric_count": len(manual_metrics),
+                "manual_retrieval_unit_count": len(manual_retrieval_units),
+                "available_supporting_ref_count": len(supporting_ref_index),
+                "used_supporting_ref_count": len(referenced_supporting_refs),
+            },
+            "validation": {
+                "valid": not errors,
+                "errors": errors,
+                "warnings": warnings,
+            },
         }
 
     def _normalize_overlay(self, payload: dict[str, Any]) -> dict[str, Any]:

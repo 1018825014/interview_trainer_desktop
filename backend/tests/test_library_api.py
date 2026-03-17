@@ -519,6 +519,115 @@ class LibraryApiTests(unittest.TestCase):
         self.assertTrue(any(item["content"] == "Manual project notes" for item in manual_docs))
         self.assertTrue(any(item["content"] == "def run():\n    return 'v2'\n" for item in refreshed_project["code_files"]))
 
+    def test_library_project_authoring_pack_preview_reports_duplicate_ids_and_missing_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+
+            preview = client.post(
+                f"/api/library/projects/{project['project_id']}/authoring-pack/preview",
+                json={
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "shared-proof",
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 prompts locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_metrics": [
+                        {
+                            "evidence_id": "shared-proof",
+                            "metric_name": "first_token_latency",
+                            "metric_value": "850ms",
+                            "baseline": "1.7s",
+                            "source_note": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "tradeoff-1",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this architecture?"],
+                            "short_answer": "I optimized for debuggability first.",
+                            "long_answer": "Smaller components made retrieval failures easier to inspect.",
+                            "supporting_refs": ["shared-proof", "missing-ref"],
+                        }
+                    ],
+                },
+            ).json()
+
+        self.assertFalse(preview["validation"]["valid"])
+        self.assertIn("shared-proof", "\n".join(preview["validation"]["errors"]))
+        self.assertIn("missing-ref", "\n".join(preview["validation"]["errors"]))
+        self.assertEqual(preview["summary"]["manual_evidence_count"], 1)
+        self.assertEqual(preview["summary"]["manual_metric_count"], 1)
+        self.assertEqual(preview["summary"]["manual_retrieval_unit_count"], 1)
+
+    def test_library_project_authoring_pack_replace_roundtrips_manual_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+
+            updated = client.put(
+                f"/api/library/projects/{project['project_id']}/authoring-pack",
+                json={
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-evidence-1",
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 prompts locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_metrics": [
+                        {
+                            "evidence_id": "manual-metric-1",
+                            "metric_name": "first_token_latency",
+                            "metric_value": "850ms",
+                            "baseline": "1.7s",
+                            "method": "local benchmark",
+                            "environment": "sqlite + fast model",
+                            "source_note": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-1",
+                            "unit_type": "performance_evidence",
+                            "question_forms": ["How did you improve latency?"],
+                            "short_answer": "I shortened the retrieval path first.",
+                            "long_answer": "I moved the strongest evidence closer to the starter path so first token latency dropped quickly.",
+                            "key_points": ["latency", "retrieval"],
+                            "supporting_refs": ["manual-evidence-1", "manual-metric-1"],
+                            "hooks": ["The retrieval router latency was the hardest part."],
+                            "safe_claims": ["The system improved first token latency."],
+                        }
+                    ],
+                },
+            ).json()
+            fetched = client.get(f"/api/library/projects/{project['project_id']}/authoring-pack").json()
+            project_after = client.get(f"/api/library/projects/{project['project_id']}").json()
+
+        self.assertTrue(updated["validation"]["valid"])
+        self.assertEqual(updated["summary"]["manual_evidence_count"], 1)
+        self.assertEqual(updated["summary"]["manual_metric_count"], 1)
+        self.assertEqual(updated["summary"]["manual_retrieval_unit_count"], 1)
+        self.assertEqual(fetched["manual_evidence"][0]["title"], "Load Test")
+        self.assertEqual(fetched["manual_metrics"][0]["metric_name"], "first_token_latency")
+        self.assertEqual(fetched["manual_retrieval_units"][0]["supporting_refs"], ["manual-evidence-1", "manual-metric-1"])
+        self.assertEqual(project_after["manual_evidence"][0]["title"], "Load Test")
+        self.assertEqual(project_after["manual_retrieval_units"][0]["unit_type"], "performance_evidence")
+
 
 if __name__ == "__main__":
     unittest.main()
