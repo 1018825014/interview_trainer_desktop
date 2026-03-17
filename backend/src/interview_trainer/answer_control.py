@@ -85,6 +85,9 @@ class AnswerPlan:
     need_code_evidence: bool
     allow_hook: bool
     preferred_hook_ids: list[str] = field(default_factory=list)
+    delivery_style: str = "spoken_balanced"
+    opening_move: str = "answer_first"
+    closing_move: str = "boundary_first"
 
 
 @dataclass(slots=True)
@@ -125,6 +128,9 @@ class AnswerController:
         }
         max_sentences = 4 if intent in {"project_intro", "architecture_overview"} else 6
         preferred_hook_ids = active_project_ids[:1] if allow_hook else []
+        delivery_style = self._delivery_style(intent)
+        opening_move = self._opening_move(intent)
+        closing_move = self._closing_move(intent)
         return AnswerPlan(
             intent=intent,
             retrieve_priority=retrieve_priority,
@@ -134,6 +140,9 @@ class AnswerController:
             need_code_evidence=need_code_evidence,
             allow_hook=allow_hook,
             preferred_hook_ids=preferred_hook_ids,
+            delivery_style=delivery_style,
+            opening_move=opening_move,
+            closing_move=closing_move,
         )
 
     def advance_state(
@@ -231,3 +240,38 @@ class AnswerController:
         if intent == "project_intro":
             return ["goal", "solution", "result", "hook"]
         return ["conclusion", "evidence", "boundary"]
+
+    def _delivery_style(self, intent: str) -> str:
+        if intent == "tradeoff_reasoning":
+            return "spoken_tradeoff"
+        if intent == "module_deep_dive":
+            return "spoken_technical"
+        if intent == "performance_evidence":
+            return "spoken_evidence"
+        if intent == "architecture_overview":
+            return "spoken_structured"
+        if intent == "project_intro":
+            return "spoken_confident"
+        if intent == "failure_analysis":
+            return "spoken_reflective"
+        if intent == "optimization_plan":
+            return "spoken_forward_looking"
+        return "spoken_balanced"
+
+    def _opening_move(self, intent: str) -> str:
+        if intent == "module_deep_dive":
+            return "responsibility_first"
+        if intent == "failure_analysis":
+            return "failure_first"
+        if intent == "optimization_plan":
+            return "limit_first"
+        return "answer_first"
+
+    def _closing_move(self, intent: str) -> str:
+        if intent == "module_deep_dive":
+            return "risk_boundary"
+        if intent == "performance_evidence":
+            return "evidence_anchor"
+        if intent in {"project_intro", "architecture_overview", "tradeoff_reasoning", "optimization_plan"}:
+            return "invite_followup"
+        return "boundary_first"

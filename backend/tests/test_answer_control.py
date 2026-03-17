@@ -19,6 +19,8 @@ class AnswerControlTests(unittest.TestCase):
         self.assertTrue(plan.allow_hook)
         self.assertIn("RetrievalUnit", plan.retrieve_priority)
         self.assertFalse(plan.need_code_evidence)
+        self.assertEqual(plan.delivery_style, "spoken_tradeoff")
+        self.assertEqual(plan.opening_move, "answer_first")
 
     def test_followup_reuses_previous_project_state(self) -> None:
         controller = AnswerController()
@@ -42,6 +44,7 @@ class AnswerControlTests(unittest.TestCase):
         self.assertEqual(next_state.active_project_id, "agent-console")
         self.assertEqual(next_state.active_module_id, "retrieval-router")
         self.assertEqual(next_state.followup_thread, "module_deep_dive")
+        self.assertEqual(plan.delivery_style, "spoken_technical")
 
 
 if __name__ == "__main__":

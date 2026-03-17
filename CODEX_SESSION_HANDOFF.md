@@ -535,15 +535,41 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `71/71` passing
+- Stage 17 implemented:
+  - completed the first "spoken answer control" pass for the knowledge-library runtime
+  - `AnswerPlan` now carries:
+    - `delivery_style`
+    - `opening_move`
+    - `closing_move`
+  - prompt building now forwards those controls into the runtime prompt so the model can see:
+    - how to open
+    - how to sound
+    - how to close or invite follow-up
+  - the local `TemplateLLMProvider` fallback was upgraded from a generic template into plan-aware spoken drafting:
+    - tradeoff questions now open with answer-first language and explicit tradeoff framing
+    - module deep-dive questions now open with responsibility-first framing and emphasize boundary / risk
+    - follow-up-safe closing moves now differ by plan:
+      - invite follow-up
+      - risk boundary
+      - evidence anchor
+  - this means the no-network fallback path now behaves much more like a real interview copilot instead of a generic summary generator
+- Stage 17 verification:
+  - targeted backend tests:
+    - `tests.test_answer_control -v`
+    - `tests.test_generation -v`
+  - full backend unittest:
+    - `73/73` passing
 - Recommended next implementation order:
-  1. deeper answer naturalness tuning based on real interview transcripts
-  2. larger-library workspace preview UX polish
-  3. preset workflow refinement:
+  1. larger-library workspace preview UX polish
+  2. preset workflow refinement:
      - compare against latest built bundle
      - saved preset families for one-click company switching
-  4. authoring-pack refinement:
+  3. authoring-pack refinement:
      - saved template presets across projects
      - smarter dedupe / rename suggestions when importing external templates
+  4. deeper answer naturalness tuning:
+     - transcript-informed rhythm / pacing
+     - stronger spoken Chinese variation beyond plan-level control
 
 ## Best next debugging tasks
 

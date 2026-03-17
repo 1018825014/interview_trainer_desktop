@@ -80,6 +80,9 @@ class OpenAIChatProviderTests(unittest.TestCase):
                 need_metrics=False,
                 need_code_evidence=False,
                 allow_hook=True,
+                delivery_style="spoken_tradeoff",
+                opening_move="answer_first",
+                closing_move="invite_followup",
             ),
             answer_state=AnswerState(
                 active_project_id="agentops-console",
@@ -94,7 +97,99 @@ class OpenAIChatProviderTests(unittest.TestCase):
         self.assertIn("[hook] The retrieval router was the hardest part", user_message)
         self.assertIn("Allow hook: True", user_message)
         self.assertIn("Used hook ids: manual-ru-0", user_message)
+        self.assertIn("Delivery style: spoken_tradeoff", user_message)
+        self.assertIn("Opening move: answer_first", user_message)
+        self.assertIn("Closing move: invite_followup", user_message)
         self.assertLess(user_message.index("[retrieval]"), user_message.index("[code]"))
+
+
+class TemplateLLMProviderTests(unittest.TestCase):
+    def test_starter_respects_tradeoff_style_controls(self) -> None:
+        provider = TemplateLLMProvider(persona="coach")
+
+        draft = provider.starter(
+            turn_id="turn-1",
+            question="为什么你没有做成一体化工作流？",
+            route=ContextRoute(mode=ContextMode.PROJECT, reason="tradeoff question"),
+            pack=KnowledgePack(
+                project_refs=[EvidenceRef(ref_id="project-1", label="AgentOps Console", kind="project", snippet="Agent interview copilot")],
+                evidence_refs=[EvidenceRef(ref_id="ev-1", label="README.md", kind="evidence", snippet="Latency dropped from 1.8s to 900ms")],
+            ),
+            briefing=SessionBriefing(
+                company="Alibaba",
+                business_context="agent platform",
+                job_description="agent tradeoff",
+                priority_projects=["AgentOps Console"],
+                focus_topics=["agent", "tradeoff"],
+                style_bias=["先结论后展开"],
+                likely_questions=[],
+            ),
+            candidate_history=["前面我提到过这个项目最大的难点是检索速度"],
+            answer_plan=AnswerPlan(
+                intent="tradeoff_reasoning",
+                retrieve_priority=["RetrievalUnit", "Project", "EvidenceCard"],
+                answer_template=["context", "options", "choice", "reason", "cost"],
+                max_sentences=4,
+                need_metrics=True,
+                need_code_evidence=False,
+                allow_hook=True,
+                delivery_style="spoken_tradeoff",
+                opening_move="answer_first",
+                closing_move="invite_followup",
+            ),
+            answer_state=AnswerState(active_project_id="project-1", followup_thread="tradeoff_reasoning"),
+        )
+
+        self.assertIn("先说结论", draft.text)
+        self.assertIn("取舍", draft.text)
+        self.assertIn("如果你想继续追问", draft.text)
+        self.assertIn("AgentOps Console", draft.text)
+
+    def test_full_respects_module_style_controls(self) -> None:
+        provider = TemplateLLMProvider(persona="coach")
+
+        draft = provider.full(
+            turn_id="turn-2",
+            question="这个模块为什么会成为瓶颈？",
+            route=ContextRoute(mode=ContextMode.PROJECT, reason="module deep dive"),
+            pack=KnowledgePack(
+                project_refs=[EvidenceRef(ref_id="project-1", label="AgentOps Console", kind="project", snippet="Agent interview copilot")],
+                module_refs=[EvidenceRef(ref_id="module-1", label="retrieval-router", kind="module", snippet="route requests to the right retriever")],
+                evidence_refs=[EvidenceRef(ref_id="ev-1", label="benchmark.md", kind="evidence", snippet="P95 latency 900ms")],
+            ),
+            briefing=SessionBriefing(
+                company="Alibaba",
+                business_context="agent platform",
+                job_description="agent system design",
+                priority_projects=["AgentOps Console"],
+                focus_topics=["agent", "latency"],
+                style_bias=["先结论后展开"],
+                likely_questions=[],
+            ),
+            candidate_history=["刚才我已经提到过 retrieval-router 在调用链中间层"],
+            answer_plan=AnswerPlan(
+                intent="module_deep_dive",
+                retrieve_priority=["RetrievalUnit", "ModuleCardPlus", "CodeChunk"],
+                answer_template=["module_role", "call_path", "boundary", "risk"],
+                max_sentences=6,
+                need_metrics=False,
+                need_code_evidence=True,
+                allow_hook=False,
+                delivery_style="spoken_technical",
+                opening_move="responsibility_first",
+                closing_move="risk_boundary",
+            ),
+            answer_state=AnswerState(
+                active_project_id="project-1",
+                active_module_id="module-1",
+                followup_thread="module_deep_dive",
+            ),
+        )
+
+        self.assertIn("先说模块职责", draft.text)
+        self.assertIn("retrieval-router", draft.text)
+        self.assertIn("边界", draft.text)
+        self.assertIn("风险", draft.text)
 
 
 if __name__ == "__main__":
