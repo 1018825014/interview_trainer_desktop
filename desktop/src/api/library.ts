@@ -23,6 +23,7 @@ import type {
   LibraryManualMetricRecord,
   LibraryManualRetrievalUnitRecord,
   LibraryOverlayRecord,
+  LibraryPresetComparisonRecord,
   LibraryPresetRecord,
   LibraryProfileRecord,
   LibraryProjectAuthoringPackRecord,
@@ -242,6 +243,22 @@ function mapPreset(raw: any): LibraryPresetRecord {
     includeRoleDocuments: Boolean(raw?.include_role_documents),
     createdAt: asNumber(raw?.created_at),
     updatedAt: asNumber(raw?.updated_at),
+  };
+}
+
+function mapPresetComparison(raw: any): LibraryPresetComparisonRecord {
+  return {
+    leftPreset: mapPreset(raw?.left_preset),
+    rightPreset: mapPreset(raw?.right_preset),
+    addedProjects: asStringArray(raw?.added_projects),
+    removedProjects: asStringArray(raw?.removed_projects),
+    sharedProjects: asStringArray(raw?.shared_projects),
+    leftOverlayName: asString(raw?.left_overlay_name),
+    rightOverlayName: asString(raw?.right_overlay_name),
+    overlayChanged: Boolean(raw?.overlay_changed),
+    leftIncludeRoleDocuments: Boolean(raw?.left_include_role_documents),
+    rightIncludeRoleDocuments: Boolean(raw?.right_include_role_documents),
+    includeRoleDocumentsChanged: Boolean(raw?.include_role_documents_changed),
   };
 }
 
@@ -793,6 +810,30 @@ export async function updateLibraryPreset(
     errorMessage: "Failed to update preset",
   });
   return mapPreset(preset);
+}
+
+export async function cloneLibraryPreset(
+  baseUrl: string,
+  presetId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryPresetRecord> {
+  const preset = await requestJson<any>(`${baseUrl}/api/library/presets/${presetId}/clone`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to clone preset",
+  });
+  return mapPreset(preset);
+}
+
+export async function compareLibraryPresets(
+  baseUrl: string,
+  leftPresetId: string,
+  rightPresetId: string,
+): Promise<LibraryPresetComparisonRecord> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/presets/${leftPresetId}/compare/${rightPresetId}`, {
+    errorMessage: "Failed to compare presets",
+  });
+  return mapPresetComparison(payload);
 }
 
 export async function listLibraryBundles(

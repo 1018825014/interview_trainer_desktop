@@ -265,6 +265,20 @@ export interface LibraryPresetRecord {
   updatedAt: number;
 }
 
+export interface LibraryPresetComparisonRecord {
+  leftPreset: LibraryPresetRecord;
+  rightPreset: LibraryPresetRecord;
+  addedProjects: string[];
+  removedProjects: string[];
+  sharedProjects: string[];
+  leftOverlayName: string;
+  rightOverlayName: string;
+  overlayChanged: boolean;
+  leftIncludeRoleDocuments: boolean;
+  rightIncludeRoleDocuments: boolean;
+  includeRoleDocumentsChanged: boolean;
+}
+
 export interface LibraryBundleSummaryRecord {
   bundleId: string;
   presetId: string;

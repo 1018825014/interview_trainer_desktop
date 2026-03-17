@@ -375,6 +375,66 @@ class LibraryApiTests(unittest.TestCase):
         self.assertIn("Bundle reuse made company-specific switching much faster.", comparison["added_hook_texts"])
         self.assertEqual(comparison["removed_hook_texts"], [])
 
+    def test_library_preset_clone_and_compare_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project_one = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+            project_two = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Retrieval Ops"},
+            ).json()
+            overlay_one = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={"name": "Alibaba", "company": "Alibaba"},
+            ).json()
+            overlay_two = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={"name": "ByteDance", "company": "ByteDance"},
+            ).json()
+            preset_one = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Preset A",
+                    "project_ids": [project_one["project_id"]],
+                    "overlay_id": overlay_one["overlay_id"],
+                    "include_role_documents": True,
+                },
+            ).json()
+            preset_two = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Preset B",
+                    "project_ids": [project_one["project_id"], project_two["project_id"]],
+                    "overlay_id": overlay_two["overlay_id"],
+                    "include_role_documents": False,
+                },
+            ).json()
+
+            cloned = client.post(
+                f"/api/library/presets/{preset_one['preset_id']}/clone",
+                json={"name": "Preset A Copy"},
+            ).json()
+            comparison = client.get(
+                f"/api/library/presets/{preset_two['preset_id']}/compare/{preset_one['preset_id']}"
+            ).json()
+
+        self.assertNotEqual(cloned["preset_id"], preset_one["preset_id"])
+        self.assertEqual(cloned["name"], "Preset A Copy")
+        self.assertEqual(cloned["project_ids"], preset_one["project_ids"])
+        self.assertEqual(cloned["overlay_id"], preset_one["overlay_id"])
+        self.assertTrue(cloned["include_role_documents"])
+        self.assertEqual(comparison["added_projects"], ["Retrieval Ops"])
+        self.assertEqual(comparison["removed_projects"], [])
+        self.assertEqual(comparison["left_overlay_name"], "ByteDance")
+        self.assertEqual(comparison["right_overlay_name"], "Alibaba")
+        self.assertTrue(comparison["overlay_changed"])
+        self.assertTrue(comparison["include_role_documents_changed"])
+        self.assertEqual(comparison["shared_projects"], ["Agent Console"])
+
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

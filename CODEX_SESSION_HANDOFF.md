@@ -509,10 +509,38 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `70/70` passing
+- Stage 16 implemented:
+  - added preset workflow APIs:
+    - `POST /api/library/presets/{preset_id}/clone`
+    - `GET /api/library/presets/{left_preset_id}/compare/{right_preset_id}`
+  - backend preset compare now reports:
+    - added projects
+    - removed projects
+    - shared projects
+    - overlay name changes
+    - role-document toggle changes
+  - backend preset clone now creates a new preset record that preserves:
+    - selected project ids
+    - overlay id
+    - include_role_documents
+  - desktop `PresetEditor` was rewritten into a cleaner editor surface and now supports:
+    - cloning the current preset
+    - selecting another preset as compare target
+    - viewing project / overlay / role-document differences inline
+  - this makes multi-company preset iteration much faster because you can clone a baseline preset, tweak it, and immediately compare what changed
+- Stage 16 verification:
+  - targeted backend tests:
+    - `tests.test_library_api -v`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `71/71` passing
 - Recommended next implementation order:
   1. deeper answer naturalness tuning based on real interview transcripts
   2. larger-library workspace preview UX polish
-  3. multi-project activation presets with faster compare / switch workflows
+  3. preset workflow refinement:
+     - compare against latest built bundle
+     - saved preset families for one-click company switching
   4. authoring-pack refinement:
      - saved template presets across projects
      - smarter dedupe / rename suggestions when importing external templates

@@ -3,7 +3,9 @@ import {
   buildLibraryProjectAuthoringPackTemplate,
   buildPresetSessionPayload,
   compareLibraryBundles,
+  compareLibraryPresets,
   compileLibraryWorkspace,
+  cloneLibraryPreset,
   createLibraryProjectDocument,
   createLibraryOverlay,
   createLibraryPreset,
@@ -36,6 +38,7 @@ import type {
   LibraryBundleDetailRecord,
   LibraryEntitySelection,
   LibraryOverlayRecord,
+  LibraryPresetComparisonRecord,
   LibraryPresetRecord,
   LibraryDocumentRecord,
   LibraryProjectAuthoringPackRecord,
@@ -295,6 +298,8 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     artifactKind: "",
     search: "",
   });
+  const [presetComparison, setPresetComparison] = useState<LibraryPresetComparisonRecord | null>(null);
+  const [comparePresetId, setComparePresetId] = useState("");
   const [bundleDetail, setBundleDetail] = useState<LibraryBundleDetailRecord | null>(null);
   const [bundleComparison, setBundleComparison] = useState<LibraryBundleComparisonRecord | null>(null);
   const [compareBundleId, setCompareBundleId] = useState("");
@@ -401,6 +406,37 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     () => latestBundleForPreset(selectedPreset, workspace?.compiledBundles ?? []),
     [selectedPreset, workspace],
   );
+
+  useEffect(() => {
+    setPresetComparison(null);
+    setComparePresetId("");
+  }, [selectedPreset?.presetId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPresetComparison() {
+      if (!selectedPreset || !comparePresetId || !backendOnline) {
+        setPresetComparison(null);
+        return;
+      }
+      try {
+        const comparison = await compareLibraryPresets(backendBaseUrl, selectedPreset.presetId, comparePresetId);
+        if (!cancelled) {
+          setPresetComparison(comparison);
+        }
+      } catch {
+        if (!cancelled) {
+          setPresetComparison(null);
+        }
+      }
+    }
+
+    void loadPresetComparison();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl, backendOnline, selectedPreset?.presetId, comparePresetId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1181,6 +1217,28 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     }
   }
 
+  async function handleClonePreset() {
+    if (!backendOnline || !workspace || !selectedPreset) {
+      setStatusMessage("请先选择一个 preset。");
+      return;
+    }
+    try {
+      const cloned = await cloneLibraryPreset(backendBaseUrl, selectedPreset.presetId, {
+        name: `${selectedPreset.name} Copy`,
+      });
+      const next = {
+        ...workspace,
+        presets: [...workspace.presets, cloned],
+      };
+      syncWorkspace(next);
+      setSelection({ type: "preset", id: cloned.presetId });
+      setComparePresetId(selectedPreset.presetId);
+      setStatusMessage(`已克隆 preset ${cloned.name}。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "克隆 preset 失败。");
+    }
+  }
+
   async function handleSavePreset() {
     if (!backendOnline || !selectedPreset) {
       setStatusMessage("请先选择一个 preset。");
@@ -1196,6 +1254,13 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       setStatusMessage(`Preset ${saved.name} 已保存。`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "保存 preset 失败。");
+    }
+  }
+
+  function handleChangePresetCompareTarget(presetId: string) {
+    setComparePresetId(presetId);
+    if (!presetId) {
+      setPresetComparison(null);
     }
   }
 
@@ -1580,11 +1645,16 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
               preset={selectedPreset}
               projects={workspace?.knowledge.projects ?? []}
               overlays={workspace?.overlays ?? []}
+              presets={workspace?.presets ?? []}
               latestBundle={presetLatestBundle}
+              comparison={presetComparison}
+              comparePresetId={comparePresetId}
               onChange={updatePreset}
               onSave={handleSavePreset}
               onBuildPayload={handleBuildPayload}
               onActivate={handleActivate}
+              onClone={handleClonePreset}
+              onChangeCompareTarget={handleChangePresetCompareTarget}
             />
           ) : null}
 

@@ -404,6 +404,20 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="preset not found") from exc
 
+    @app.post("/api/library/presets/{preset_id}/clone")
+    def clone_library_preset(preset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.clone_preset(preset_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="preset not found") from exc
+
+    @app.get("/api/library/presets/{left_preset_id}/compare/{right_preset_id}")
+    def compare_library_presets(left_preset_id: str, right_preset_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.compare_presets(left_preset_id, right_preset_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="preset not found") from exc
+
     @app.post("/api/library/presets/{preset_id}/build-session-payload")
     def build_library_session_payload(preset_id: str) -> dict[str, Any]:
         try:

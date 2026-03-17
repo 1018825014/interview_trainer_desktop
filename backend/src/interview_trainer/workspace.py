@@ -509,6 +509,48 @@ class WorkspaceManager:
         self.repository.save_workspace(workspace)
         return self._serialize_preset(preset)
 
+    def clone_preset(self, preset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, preset = self._find_preset(preset_id)
+        cloned = self._normalize_preset(
+            {
+                "name": _clean_text(payload.get("name")) or f"{_clean_text(preset.get('name')) or 'Interview Preset'} Copy",
+                "overlay_id": _clean_text(preset.get("overlay_id")),
+                "project_ids": list(preset.get("project_ids", [])),
+                "include_role_documents": bool(preset.get("include_role_documents", True)),
+            }
+        )
+        workspace.setdefault("presets", []).append(cloned)
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return self._serialize_preset(cloned)
+
+    def compare_presets(self, left_preset_id: str, right_preset_id: str) -> dict[str, Any]:
+        left_workspace, left_preset = self._find_preset(left_preset_id)
+        right_workspace, right_preset = self._find_preset(right_preset_id)
+
+        left_projects = self._project_names_for_preset(left_workspace, left_preset)
+        right_projects = self._project_names_for_preset(right_workspace, right_preset)
+        left_overlay_name = self._overlay_name_for_preset(left_workspace, left_preset)
+        right_overlay_name = self._overlay_name_for_preset(right_workspace, right_preset)
+
+        return {
+            "left_preset": self._serialize_preset(left_preset),
+            "right_preset": self._serialize_preset(right_preset),
+            "added_projects": [item for item in left_projects if item not in right_projects],
+            "removed_projects": [item for item in right_projects if item not in left_projects],
+            "shared_projects": [item for item in left_projects if item in right_projects],
+            "left_overlay_name": left_overlay_name,
+            "right_overlay_name": right_overlay_name,
+            "overlay_changed": (
+                _clean_text(left_preset.get("overlay_id")) != _clean_text(right_preset.get("overlay_id"))
+                or left_overlay_name != right_overlay_name
+            ),
+            "left_include_role_documents": bool(left_preset.get("include_role_documents", True)),
+            "right_include_role_documents": bool(right_preset.get("include_role_documents", True)),
+            "include_role_documents_changed": bool(left_preset.get("include_role_documents", True))
+            != bool(right_preset.get("include_role_documents", True)),
+        }
+
     def list_bundles(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
         return {
@@ -1445,6 +1487,28 @@ class WorkspaceManager:
                 if _clean_text(preset.get("preset_id")) == preset_id:
                     return workspace, preset
         raise KeyError(preset_id)
+
+    def _project_names_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> list[str]:
+        projects = {
+            _clean_text(project.get("project_id")): _clean_text(project.get("name"))
+            for project in workspace.get("knowledge", {}).get("projects", [])
+            if isinstance(project, dict)
+        }
+        names: list[str] = []
+        for project_id in preset.get("project_ids", []):
+            normalized = _clean_text(project_id)
+            if normalized and normalized in projects:
+                names.append(projects[normalized])
+        return names
+
+    def _overlay_name_for_preset(self, workspace: dict[str, Any], preset: dict[str, Any]) -> str:
+        overlay_id = _clean_text(preset.get("overlay_id"))
+        if not overlay_id:
+            return ""
+        for overlay in workspace.get("overlays", []):
+            if _clean_text(overlay.get("overlay_id")) == overlay_id:
+                return _clean_text(overlay.get("name"))
+        return ""
 
     def _find_document(self, document_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         for workspace in self._workspaces.values():
