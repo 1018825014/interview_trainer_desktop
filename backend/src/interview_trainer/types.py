@@ -161,6 +161,8 @@ class ContextRoute:
 @dataclass(slots=True)
 class KnowledgePack:
     profile_refs: list[EvidenceRef] = field(default_factory=list)
+    retrieval_refs: list[EvidenceRef] = field(default_factory=list)
+    evidence_refs: list[EvidenceRef] = field(default_factory=list)
     project_refs: list[EvidenceRef] = field(default_factory=list)
     module_refs: list[EvidenceRef] = field(default_factory=list)
     code_refs: list[EvidenceRef] = field(default_factory=list)
@@ -208,6 +210,7 @@ class InterviewSession:
     session_id: str
     knowledge: CompiledKnowledge
     briefing: SessionBriefing
+    library_bundle: Any | None = None
     transcript_history: list[TranscriptEvent] = field(default_factory=list)
     actual_candidate_history: list[str] = field(default_factory=list)
     answer_history: dict[str, dict[str, Any]] = field(default_factory=dict)

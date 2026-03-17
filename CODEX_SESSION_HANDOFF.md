@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `42/42` passing
+- Backend tests: `44/44` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -128,6 +128,7 @@ Recommended current setup:
   - Stage 3 answer-oriented library compile layer
   - Stage 4 overlays, presets, bundles, and session-payload activation
   - Stage 5 runtime answer-plan integration
+  - Stage 6 retrieval-unit-first and evidence-aware runtime routing
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -248,11 +249,31 @@ Recommended current setup:
     - `test_routing.py`
     - `test_service.py`
   - full backend unittest: `42/42` passing
+- Stage 6 implemented:
+  - added `LibraryRetriever` for bundle-aware runtime retrieval selection
+  - `KnowledgePack` now carries:
+    - `retrieval_refs`
+    - `evidence_refs`
+  - `ContextRouter.build_pack_for_plan()` now prioritizes:
+    - retrieval units
+    - evidence cards / metric evidence
+    - project/module refs
+    - code refs only when needed by plan
+  - `InterviewTrainerService` now stores session-level compiled bundles and uses them to build plan-aware packs at answer time
+  - prompt formatting and generation evidence refs now include retrieval/evidence items before code
+- New backend files added in Stage 6:
+  - `backend/src/interview_trainer/library_retriever.py`
+- Stage 6 verification:
+  - targeted retrieval tests:
+    - `test_routing.py`
+    - `test_generation.py`
+    - `test_service.py`
+  - full backend unittest: `44/44` passing
 - Recommended next implementation order:
-  1. runtime retrieval unit-first and evidence-aware routing
-  2. desktop library UI split and management flow
-  3. richer indexing and evidence authoring surfaces
-  4. bundle history and activation UX polish
+  1. desktop library UI split and management flow
+  2. richer indexing and evidence authoring surfaces
+  3. bundle history and activation UX polish
+  4. deeper retrieval ranking and hook control tuning
 
 ## Best next debugging tasks
 

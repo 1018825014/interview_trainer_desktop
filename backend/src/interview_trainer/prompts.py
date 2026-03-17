@@ -100,7 +100,15 @@ class PromptBuilder:
         )
 
     def _format_pack(self, pack: KnowledgePack) -> list[str]:
-        refs = pack.profile_refs + pack.project_refs + pack.module_refs + pack.code_refs + pack.role_refs
+        refs = (
+            pack.profile_refs
+            + pack.retrieval_refs
+            + pack.evidence_refs
+            + pack.project_refs
+            + pack.module_refs
+            + pack.code_refs
+            + pack.role_refs
+        )
         if not refs:
             return ["- no extra evidence"]
         return [f"- [{ref.kind}] {ref.label}: {ref.snippet}" for ref in refs]

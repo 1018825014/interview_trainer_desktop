@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from .answer_control import AnswerPlan
+from .library_retriever import LibraryRetriever
 
 from .types import (
     CompiledKnowledge,
@@ -13,6 +14,8 @@ from .types import (
     ProjectInterviewPack,
     SessionBriefing,
 )
+
+from .library_types import CompiledBundlePayload
 
 
 PROJECT_KEYWORDS = {
@@ -64,6 +67,9 @@ CODE_DETAIL_KEYWORDS = {"代码", "函数", "类", "接口", "实现", "模块",
 
 
 class ContextRouter:
+    def __init__(self, retriever: LibraryRetriever | None = None) -> None:
+        self.retriever = retriever or LibraryRetriever()
+
     def route(
         self,
         question: str,
@@ -151,10 +157,57 @@ class ContextRouter:
 
         return KnowledgePack(
             profile_refs=profile_refs,
+            retrieval_refs=[],
+            evidence_refs=[],
             project_refs=project_refs,
             module_refs=module_refs,
             code_refs=code_refs[:3],
             role_refs=role_refs[:3],
+        )
+
+    def build_pack_for_plan(
+        self,
+        *,
+        question: str,
+        plan: AnswerPlan,
+        compiled_bundle: CompiledBundlePayload,
+        route: ContextRoute | None = None,
+        briefing: SessionBriefing | None = None,
+    ) -> KnowledgePack:
+        selection = self.retriever.retrieve(
+            question=question,
+            plan=plan,
+            bundle=compiled_bundle,
+        )
+        role_refs: list[EvidenceRef] = []
+        route_mode = route.mode if route is not None else ContextMode.PROJECT
+        if route_mode in {ContextMode.ROLE, ContextMode.HYBRID, ContextMode.GENERIC}:
+            for playbook in compiled_bundle.compiled_knowledge.role_playbooks[:2]:
+                role_refs.append(
+                    EvidenceRef(
+                        ref_id=playbook.playbook_id,
+                        label=playbook.role_name,
+                        kind="role",
+                        snippet=" / ".join(playbook.focus_areas[:4]),
+                    )
+                )
+        profile_refs = [
+            EvidenceRef(
+                ref_id="profile",
+                label="Candidate Profile",
+                kind="profile",
+                snippet=compiled_bundle.compiled_knowledge.profile_card.headline,
+            )
+        ]
+        del briefing
+        return KnowledgePack(
+            profile_refs=profile_refs,
+            retrieval_refs=selection.retrieval_refs,
+            evidence_refs=selection.evidence_refs,
+            project_refs=selection.project_refs,
+            module_refs=selection.module_refs,
+            code_refs=selection.code_refs,
+            role_refs=role_refs[:2],
         )
 
     def _should_include_code(self, question: str, answer_plan: AnswerPlan | None) -> bool:

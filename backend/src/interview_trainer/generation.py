@@ -191,11 +191,27 @@ class TemplateLLMProvider:
         return "业务目标和落地取舍"
 
     def _evidence_ids(self, pack: KnowledgePack) -> list[str]:
-        refs = pack.profile_refs + pack.project_refs + pack.module_refs + pack.code_refs + pack.role_refs
+        refs = (
+            pack.profile_refs
+            + pack.retrieval_refs
+            + pack.evidence_refs
+            + pack.project_refs
+            + pack.module_refs
+            + pack.code_refs
+            + pack.role_refs
+        )
         return [item.ref_id for item in refs]
 
     def _evidence_labels(self, pack: KnowledgePack) -> list[str]:
-        refs = pack.profile_refs + pack.project_refs + pack.module_refs + pack.code_refs + pack.role_refs
+        refs = (
+            pack.profile_refs
+            + pack.retrieval_refs
+            + pack.evidence_refs
+            + pack.project_refs
+            + pack.module_refs
+            + pack.code_refs
+            + pack.role_refs
+        )
         return [item.label for item in refs]
 
 
@@ -310,6 +326,8 @@ class OpenAIChatProvider:
                 ref.ref_id
                 for ref in (
                     pack.profile_refs
+                    + pack.retrieval_refs
+                    + pack.evidence_refs
                     + pack.project_refs
                     + pack.module_refs
                     + pack.code_refs

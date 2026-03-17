@@ -1,7 +1,9 @@
 import unittest
 
+from interview_trainer.answer_control import AnswerPlan
 from interview_trainer.briefing import BriefingBuilder
 from interview_trainer.knowledge import KnowledgeCompiler
+from interview_trainer.library_compile import LibraryCompiler
 from interview_trainer.routing import ContextRouter
 from interview_trainer.types import ContextMode
 
@@ -50,6 +52,42 @@ class ContextRouterTests(unittest.TestCase):
             briefing,
         )
         self.assertEqual(route.mode, ContextMode.HYBRID)
+
+    def test_tradeoff_question_prefers_retrieval_unit_and_evidence_before_code(self) -> None:
+        bundle = LibraryCompiler().compile_workspace(
+            {
+                "projects": [
+                    {
+                        "name": "AgentOps Console",
+                        "business_value": "Build agent workflows",
+                        "pitch_30": "Short pitch",
+                        "tradeoffs": ["Chose modular orchestration over one giant workflow"],
+                        "documents": [{"path": "README.md", "content": "Latency dropped from 1.8s to 900ms."}],
+                        "code_files": [{"path": "src/orchestrator/workflow.py", "content": "def run():\n    pass\n"}],
+                    }
+                ]
+            }
+        )
+        plan = AnswerPlan(
+            intent="tradeoff_reasoning",
+            retrieve_priority=["RetrievalUnit", "EvidenceCard", "ModuleCard", "CodeChunk"],
+            answer_template=["conclusion", "tradeoff", "reason", "upgrade"],
+            max_sentences=6,
+            need_metrics=False,
+            need_code_evidence=False,
+            allow_hook=True,
+        )
+
+        pack = ContextRouter().build_pack_for_plan(
+            question="这个方案最大的 tradeoff 是什么？",
+            plan=plan,
+            compiled_bundle=bundle,
+        )
+
+        self.assertGreaterEqual(len(pack.project_refs), 1)
+        self.assertGreaterEqual(len(pack.retrieval_refs), 1)
+        self.assertGreaterEqual(len(pack.evidence_refs), 1)
+        self.assertLessEqual(len(pack.code_refs), 1)
 
 
 if __name__ == "__main__":

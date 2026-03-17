@@ -10,6 +10,7 @@ from .config import GenerationSettings
 from .corrections import TerminologyCorrector
 from .generation import DraftFutures, DualDraftComposer, build_dual_draft_composer
 from .knowledge import KnowledgeCompiler
+from .library_compile import LibraryCompiler
 from .routing import ContextRouter
 from .turns import TurnManager
 from .types import (
@@ -36,6 +37,7 @@ class InterviewTrainerService:
     ) -> None:
         self.settings = settings or GenerationSettings.from_env()
         self.knowledge_compiler = knowledge_compiler or KnowledgeCompiler()
+        self.library_compiler = LibraryCompiler(self.knowledge_compiler)
         self.router = router or ContextRouter()
         self.answer_controller = answer_controller or AnswerController()
         self.briefing_builder = briefing_builder or BriefingBuilder()
@@ -54,17 +56,19 @@ class InterviewTrainerService:
     def create_session(self, payload: dict) -> dict:
         with self._lock:
             knowledge_payload = payload.get("knowledge", {})
-            knowledge = (
-                knowledge_payload
-                if isinstance(knowledge_payload, CompiledKnowledge)
-                else self.knowledge_compiler.compile(knowledge_payload)
-            )
+            bundle = None
+            if isinstance(knowledge_payload, CompiledKnowledge):
+                knowledge = knowledge_payload
+            else:
+                bundle = self.library_compiler.compile_workspace(knowledge_payload)
+                knowledge = bundle.compiled_knowledge
             briefing = self._build_briefing(payload.get("briefing", {}), knowledge)
             session_id = payload.get("session_id") or str(uuid4())
             self.sessions[session_id] = InterviewSession(
                 session_id=session_id,
                 knowledge=knowledge,
                 briefing=briefing,
+                library_bundle=bundle,
             )
             self.turn_managers[session_id] = TurnManager()
             self.pending_answer_jobs[session_id] = {}
@@ -185,12 +189,21 @@ class InterviewTrainerService:
                 active_module_ids=[item.ref_id for item in provisional_pack.module_refs],
                 previous_state=previous_state,
             )
-            pack = self.router.build_pack(
-                decision.locked_question,
-                route,
-                session.knowledge,
-                answer_plan=answer_plan,
-            )
+            if session.library_bundle is not None:
+                pack = self.router.build_pack_for_plan(
+                    question=decision.locked_question,
+                    plan=answer_plan,
+                    compiled_bundle=session.library_bundle,
+                    route=route,
+                    briefing=session.briefing,
+                )
+            else:
+                pack = self.router.build_pack(
+                    decision.locked_question,
+                    route,
+                    session.knowledge,
+                    answer_plan=answer_plan,
+                )
             answer_state = self.answer_controller.advance_state(
                 previous_state=previous_state,
                 plan=answer_plan,
