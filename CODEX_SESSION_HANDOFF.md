@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `37/37` passing
+- Backend tests: `38/38` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -125,6 +125,7 @@ Recommended current setup:
   - design alignment
   - Stage 1 persistent workspace foundation
   - Stage 2 backend library CRUD API
+  - Stage 3 answer-oriented library compile layer
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -183,11 +184,32 @@ Recommended current setup:
     - `test_library_repository.py`
     - `test_workspace.py`
   - full backend unittest: `37/37` passing
+- Stage 3 implemented:
+  - added typed library compile artifacts:
+    - `ModuleCardPlus`
+    - `EvidenceCard`
+    - `MetricEvidence`
+    - `RetrievalUnit`
+    - `CompiledBundlePayload`
+  - added `LibraryCompiler` that reuses `KnowledgeCompiler` output and builds:
+    - project intro / architecture / tradeoff / performance / module deep-dive units
+    - document/code evidence cards
+    - metric evidence extracted from library documents
+  - `KnowledgeCompiler` now preserves incoming `project_id` when provided
+- New backend files added in Stage 3:
+  - `backend/src/interview_trainer/library_types.py`
+  - `backend/src/interview_trainer/library_compile.py`
+  - `backend/tests/test_library_compile.py`
+- Stage 3 verification:
+  - targeted compile tests:
+    - `test_library_compile.py`
+    - `test_knowledge.py`
+  - full backend unittest: `38/38` passing
 - Recommended next implementation order:
-  1. compile and retrieval-unit generation
-  2. preset / overlay session payload activation
-  3. desktop library UI split and management flow
-  4. richer indexing and evidence authoring surfaces
+  1. preset / overlay session payload activation
+  2. desktop library UI split and management flow
+  3. richer indexing and evidence authoring surfaces
+  4. runtime answer-plan integration
 
 ## Best next debugging tasks
 

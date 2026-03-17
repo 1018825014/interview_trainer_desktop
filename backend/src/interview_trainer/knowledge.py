@@ -160,7 +160,7 @@ class KnowledgeCompiler:
 
     def _build_project(self, payload: dict[str, Any]) -> ProjectInterviewPack:
         name = payload.get("name", "未命名项目")
-        project_id = _slugify(name)
+        project_id = payload.get("project_id") or _slugify(name)
         source_docs = payload.get("documents", [])
         source_code = payload.get("code_files", [])
 
