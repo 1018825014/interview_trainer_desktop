@@ -242,6 +242,15 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="project not found") from exc
 
+    @app.post("/api/library/projects/{project_id}/authoring-pack/template")
+    def build_library_project_authoring_pack_template(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.build_project_authoring_pack_template(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+        except ValueError as exc:  # pragma: no cover
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.put("/api/library/projects/{project_id}/authoring-pack")
     def replace_library_project_authoring_pack(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:

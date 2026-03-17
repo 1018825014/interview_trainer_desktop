@@ -628,6 +628,76 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(project_after["manual_evidence"][0]["title"], "Load Test")
         self.assertEqual(project_after["manual_retrieval_units"][0]["unit_type"], "performance_evidence")
 
+    def test_library_project_authoring_pack_template_can_append_compiled_preview_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Short pitch",
+                    "pitch_90": "Long pitch",
+                    "business_value": "Build agent workflows",
+                    "architecture": "React + Python orchestrator",
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-existing",
+                            "title": "Existing Note",
+                            "summary": "Keep this authored evidence.",
+                        }
+                    ],
+                    "documents": [
+                        {
+                            "path": "README.md",
+                            "content": "Latency dropped from 1.8s to 900ms while we simplified the retrieval path.",
+                        }
+                    ],
+                    "code_files": [
+                        {
+                            "path": "src/workflow.py",
+                            "content": "def run():\n    return 'ok'\n",
+                        }
+                    ],
+                },
+            ).json()
+
+            client.post(f"/api/workspaces/{workspace['workspace_id']}/compile").json()
+            preview = client.get(f"/api/library/projects/{project['project_id']}/compiled-preview").json()
+            selected_unit = preview["retrieval_units"][0]
+            template = client.post(
+                f"/api/library/projects/{project['project_id']}/authoring-pack/template",
+                json={
+                    "source": "compiled_preview",
+                    "mode": "append",
+                    "retrieval_unit_ids": [selected_unit["unit_id"]],
+                },
+            ).json()
+
+        self.assertTrue(template["validation"]["valid"])
+        self.assertIn("manual-existing", {item["evidence_id"] for item in template["manual_evidence"]})
+        self.assertIn(selected_unit["unit_id"], {item["unit_id"] for item in template["manual_retrieval_units"]})
+        generated_ref_ids = {item["evidence_id"] for item in template["manual_evidence"]}
+        generated_ref_ids.update(item["evidence_id"] for item in template["manual_metrics"])
+        self.assertTrue(set(selected_unit["supporting_refs"]).issubset(generated_ref_ids))
+
+    def test_library_project_authoring_pack_template_requires_compiled_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+
+            response = client.post(
+                f"/api/library/projects/{project['project_id']}/authoring-pack/template",
+                json={"source": "compiled_preview", "mode": "replace"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("compile", response.json()["detail"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

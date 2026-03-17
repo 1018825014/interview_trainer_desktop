@@ -154,6 +154,117 @@ class WorkspaceManager:
             manual_retrieval_units=units,
         )
 
+    def build_project_authoring_pack_template(
+        self,
+        project_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        _, project = self._find_project(project_id)
+        source = _clean_text(payload.get("source")).lower() or "compiled_preview"
+        mode = _clean_text(payload.get("mode")).lower() or "replace"
+        if source != "compiled_preview":
+            raise ValueError(f"Unsupported authoring pack template source: {source}")
+        if mode not in {"replace", "append"}:
+            raise ValueError(f"Unsupported authoring pack template mode: {mode}")
+
+        preview = self.get_project_compiled_preview(project_id)
+        if not bool(preview.get("compiled")):
+            raise ValueError("Project must be compiled before building an authoring pack template.")
+
+        selected_evidence_ids = self._normalize_selected_ids(payload, "evidence_ids")
+        selected_metric_ids = self._normalize_selected_ids(payload, "metric_ids")
+        selected_unit_ids = self._normalize_selected_ids(payload, "retrieval_unit_ids")
+
+        preview_evidence = self._select_preview_items(
+            preview.get("evidence_cards", []),
+            key="evidence_id",
+            selected_ids=selected_evidence_ids,
+        )
+        preview_metrics = self._select_preview_items(
+            preview.get("metric_evidence", []),
+            key="evidence_id",
+            selected_ids=selected_metric_ids,
+        )
+        preview_units = self._select_preview_items(
+            preview.get("retrieval_units", []),
+            key="unit_id",
+            selected_ids=selected_unit_ids,
+        )
+
+        evidence_index = {
+            _clean_text(item.get("evidence_id")): dict(item)
+            for item in preview.get("evidence_cards", [])
+            if isinstance(item, dict) and _clean_text(item.get("evidence_id"))
+        }
+        metric_index = {
+            _clean_text(item.get("evidence_id")): dict(item)
+            for item in preview.get("metric_evidence", [])
+            if isinstance(item, dict) and _clean_text(item.get("evidence_id"))
+        }
+
+        referenced_ids = {
+            _clean_text(ref_id)
+            for unit in preview_units
+            for ref_id in unit.get("supporting_refs", [])
+        }
+        for ref_id in referenced_ids:
+            if ref_id in evidence_index and ref_id not in {
+                _clean_text(item.get("evidence_id")) for item in preview_evidence
+            }:
+                preview_evidence.append(dict(evidence_index[ref_id]))
+            if ref_id in metric_index and ref_id not in {
+                _clean_text(item.get("evidence_id")) for item in preview_metrics
+            }:
+                preview_metrics.append(dict(metric_index[ref_id]))
+
+        generated_evidence = [
+            self._normalize_manual_evidence(self._manual_evidence_payload_from_preview(item), index)
+            for index, item in enumerate(preview_evidence, start=1)
+        ]
+        generated_metrics = [
+            self._normalize_manual_metric(self._manual_metric_payload_from_preview(item), index)
+            for index, item in enumerate(preview_metrics, start=1)
+        ]
+        generated_units = [
+            self._normalize_manual_retrieval_unit(self._manual_retrieval_payload_from_preview(item), index)
+            for index, item in enumerate(preview_units, start=1)
+        ]
+
+        if mode == "append":
+            existing_evidence, existing_metrics, existing_units = self._project_authoring_pack_parts(project)
+            generated_evidence = self._merge_authoring_items(
+                existing_evidence,
+                generated_evidence,
+                key="evidence_id",
+            )
+            generated_metrics = self._merge_authoring_items(
+                existing_metrics,
+                generated_metrics,
+                key="evidence_id",
+            )
+            generated_units = self._merge_authoring_items(
+                existing_units,
+                generated_units,
+                key="unit_id",
+            )
+
+        response = self._build_project_authoring_pack_response(
+            project,
+            manual_evidence=generated_evidence,
+            manual_metrics=generated_metrics,
+            manual_retrieval_units=generated_units,
+        )
+        response["template"] = {
+            "source": source,
+            "mode": mode,
+            "selection": {
+                "evidence_ids": selected_evidence_ids or [],
+                "metric_ids": selected_metric_ids or [],
+                "retrieval_unit_ids": selected_unit_ids or [],
+            },
+        }
+        return response
+
     def replace_project_authoring_pack(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         workspace, project = self._find_project(project_id)
         evidence, metrics, units = self._normalize_project_authoring_pack_payload(payload)
@@ -797,6 +908,90 @@ class WorkspaceManager:
             if isinstance(item, dict) and (_clean_text(item.get("short_answer")) or _clean_text(item.get("long_answer")))
         ]
         return evidence, metrics, retrieval_units
+
+    def _normalize_selected_ids(self, payload: dict[str, Any], key: str) -> list[str] | None:
+        if key not in payload:
+            return None
+        raw = payload.get(key)
+        if not isinstance(raw, list):
+            return []
+        return [_clean_text(item) for item in raw if _clean_text(item)]
+
+    def _select_preview_items(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        key: str,
+        selected_ids: list[str] | None,
+    ) -> list[dict[str, Any]]:
+        normalized_items = [dict(item) for item in items if isinstance(item, dict)]
+        if selected_ids is None:
+            return normalized_items
+        if not selected_ids:
+            return []
+        selected = set(selected_ids)
+        return [
+            item
+            for item in normalized_items
+            if _clean_text(item.get(key)) in selected
+        ]
+
+    def _merge_authoring_items(
+        self,
+        existing_items: list[dict[str, Any]],
+        incoming_items: list[dict[str, Any]],
+        *,
+        key: str,
+    ) -> list[dict[str, Any]]:
+        merged: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for item in existing_items + incoming_items:
+            identifier = _clean_text(item.get(key))
+            if not identifier:
+                continue
+            if identifier not in order:
+                order.append(identifier)
+            merged[identifier] = dict(item)
+        return [merged[identifier] for identifier in order]
+
+    def _manual_evidence_payload_from_preview(self, item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "evidence_id": _clean_text(item.get("evidence_id")),
+            "module_id": _clean_text(item.get("module_id")) or None,
+            "evidence_type": _clean_text(item.get("evidence_type")) or "manual_note",
+            "title": _clean_text(item.get("title")),
+            "summary": _clean_text(item.get("summary")),
+            "source_kind": _clean_text(item.get("source_kind")) or "compiled_preview",
+            "source_ref": _clean_text(item.get("source_ref")) or _clean_text(item.get("title")),
+            "confidence": _clean_text(item.get("confidence")) or "medium",
+        }
+
+    def _manual_metric_payload_from_preview(self, item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "evidence_id": _clean_text(item.get("evidence_id")),
+            "module_id": _clean_text(item.get("module_id")) or None,
+            "metric_name": _clean_text(item.get("metric_name")),
+            "metric_value": _clean_text(item.get("metric_value")),
+            "baseline": _clean_text(item.get("baseline")),
+            "method": _clean_text(item.get("method")) or "compiled preview",
+            "environment": _clean_text(item.get("environment")) or "compiled preview",
+            "source_note": _clean_text(item.get("source_note")) or _clean_text(item.get("metric_name")),
+            "confidence": _clean_text(item.get("confidence")) or "medium",
+        }
+
+    def _manual_retrieval_payload_from_preview(self, item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "unit_id": _clean_text(item.get("unit_id")),
+            "unit_type": _clean_text(item.get("unit_type")) or "project_intro",
+            "module_id": _clean_text(item.get("module_id")) or None,
+            "question_forms": list(item.get("question_forms", [])) if isinstance(item.get("question_forms"), list) else [],
+            "short_answer": _clean_text(item.get("short_answer")),
+            "long_answer": _clean_text(item.get("long_answer")),
+            "key_points": list(item.get("key_points", [])) if isinstance(item.get("key_points"), list) else [],
+            "supporting_refs": list(item.get("supporting_refs", [])) if isinstance(item.get("supporting_refs"), list) else [],
+            "hooks": list(item.get("hooks", [])) if isinstance(item.get("hooks"), list) else [],
+            "safe_claims": list(item.get("safe_claims", [])) if isinstance(item.get("safe_claims"), list) else [],
+        }
 
     def _build_project_authoring_pack_response(
         self,

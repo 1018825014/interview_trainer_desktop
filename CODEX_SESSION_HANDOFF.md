@@ -481,13 +481,41 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `68/68` passing
+- Stage 15 implemented:
+  - added compiled-preview-to-authoring template API:
+    - `POST /api/library/projects/{project_id}/authoring-pack/template`
+  - backend template generation now supports:
+    - `source=compiled_preview`
+    - `mode=replace|append`
+    - selecting specific `evidence_ids`
+    - selecting specific `metric_ids`
+    - selecting specific `retrieval_unit_ids`
+  - when a selected retrieval unit references supporting refs, template generation now auto-includes the needed compiled evidence / metric entries
+  - append mode now preserves existing manual authoring materials and upserts generated items by id instead of duplicating them
+  - desktop `ProjectEditor` authoring-pack panel now supports:
+    - `Draft From Compiled`
+    - `Append From Compiled`
+    - exporting the current authoring draft JSON
+    - importing a saved authoring JSON file
+  - compiled preview cards now expose direct shortcuts to append:
+    - a single evidence card
+    - a single metric card
+    - a single retrieval unit
+    into the current authoring draft
+- Stage 15 verification:
+  - targeted backend tests:
+    - `tests.test_library_api -v`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `70/70` passing
 - Recommended next implementation order:
   1. deeper answer naturalness tuning based on real interview transcripts
   2. larger-library workspace preview UX polish
   3. multi-project activation presets with faster compare / switch workflows
-  4. authoring-pack polish:
-     - copy-from-compiled shortcuts
-     - import / export templates across projects
+  4. authoring-pack refinement:
+     - saved template presets across projects
+     - smarter dedupe / rename suggestions when importing external templates
 
 ## Best next debugging tasks
 
@@ -554,13 +582,14 @@ Use this at the top of a fresh thread:
 
 ```text
 Please continue from these files:
-E:/qqbroDownload/interview_trainer_desktop/CODEX_SESSION_HANDOFF.md
-E:/qqbroDownload/interview_trainer_desktop/FUTURE_DEVELOPMENT_SPEC.md
+E:/qqbroDownload/interview_trainer_desktop-knowledge/CODEX_SESSION_HANDOFF.md
+E:/qqbroDownload/interview_trainer_desktop-knowledge/docs/superpowers/specs/2026-03-17-persistent-knowledge-library-design.md
+E:/qqbroDownload/interview_trainer_desktop-knowledge/docs/superpowers/plans/2026-03-17-persistent-knowledge-library.md
 
 Project root:
-E:/qqbroDownload/interview_trainer_desktop
+E:/qqbroDownload/interview_trainer_desktop-knowledge
 
-First, read both files and inspect the current backend and desktop status.
-Then follow the recommended order in the spec.
+First, read all three files and inspect the current backend and desktop status.
+Then continue only the local persistent multi-project knowledge-library line.
 Respond in Chinese.
 ```

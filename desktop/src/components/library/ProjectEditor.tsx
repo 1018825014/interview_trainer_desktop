@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import type {
   LibraryCodeFileRecord,
@@ -17,6 +17,7 @@ interface ProjectEditorProps {
   authoringStatus: string;
   compiledPreview: LibraryProjectCompiledPreviewRecord | null;
   onChange: (project: LibraryProjectRecord) => void;
+  onBuildAuthoringTemplate: (payload: Record<string, unknown>) => Promise<LibraryProjectAuthoringPackRecord | null>;
   onPreviewAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
   onApplyAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
   onCreateDocument: () => void;
@@ -50,13 +51,14 @@ function emptyAuthoringDraft(): string {
   );
 }
 
-function buildAuthoringDraft(project: LibraryProjectRecord | null): string {
-  if (!project) {
-    return emptyAuthoringDraft();
-  }
+function buildAuthoringDraftPayload(args: {
+  manualEvidence: LibraryManualEvidenceRecord[];
+  manualMetrics: LibraryManualMetricRecord[];
+  manualRetrievalUnits: LibraryManualRetrievalUnitRecord[];
+}): string {
   return JSON.stringify(
     {
-      manual_evidence: project.manualEvidence.map((item) => ({
+      manual_evidence: args.manualEvidence.map((item) => ({
         evidence_id: item.evidenceId,
         module_id: item.moduleId,
         evidence_type: item.evidenceType,
@@ -66,7 +68,7 @@ function buildAuthoringDraft(project: LibraryProjectRecord | null): string {
         source_ref: item.sourceRef,
         confidence: item.confidence,
       })),
-      manual_metrics: project.manualMetrics.map((item) => ({
+      manual_metrics: args.manualMetrics.map((item) => ({
         evidence_id: item.evidenceId,
         module_id: item.moduleId,
         metric_name: item.metricName,
@@ -77,7 +79,7 @@ function buildAuthoringDraft(project: LibraryProjectRecord | null): string {
         source_note: item.sourceNote,
         confidence: item.confidence,
       })),
-      manual_retrieval_units: project.manualRetrievalUnits.map((item) => ({
+      manual_retrieval_units: args.manualRetrievalUnits.map((item) => ({
         unit_id: item.unitId,
         unit_type: item.unitType,
         module_id: item.moduleId,
@@ -93,6 +95,28 @@ function buildAuthoringDraft(project: LibraryProjectRecord | null): string {
     null,
     2,
   );
+}
+
+function buildAuthoringDraft(project: LibraryProjectRecord | null): string {
+  if (!project) {
+    return emptyAuthoringDraft();
+  }
+  return buildAuthoringDraftPayload({
+    manualEvidence: project.manualEvidence,
+    manualMetrics: project.manualMetrics,
+    manualRetrievalUnits: project.manualRetrievalUnits,
+  });
+}
+
+function buildAuthoringDraftFromPack(pack: LibraryProjectAuthoringPackRecord | null): string {
+  if (!pack) {
+    return emptyAuthoringDraft();
+  }
+  return buildAuthoringDraftPayload({
+    manualEvidence: pack.manualEvidence,
+    manualMetrics: pack.manualMetrics,
+    manualRetrievalUnits: pack.manualRetrievalUnits,
+  });
 }
 
 function parseAuthoringDraft(draft: string): { payload: Record<string, unknown> | null; error: string } {
@@ -237,6 +261,7 @@ export function ProjectEditor({
   authoringStatus,
   compiledPreview,
   onChange,
+  onBuildAuthoringTemplate,
   onPreviewAuthoringPack,
   onApplyAuthoringPack,
   onCreateDocument,
@@ -247,6 +272,7 @@ export function ProjectEditor({
 }: ProjectEditorProps) {
   const [authoringDraft, setAuthoringDraft] = useState(() => buildAuthoringDraft(project));
   const [authoringDraftError, setAuthoringDraftError] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setAuthoringDraft(buildAuthoringDraft(project));
@@ -271,6 +297,48 @@ export function ProjectEditor({
     }
     setAuthoringDraftError("");
     void onApplyAuthoringPack(parsed.payload);
+  }
+
+  async function handleBuildTemplate(mode: "replace" | "append", payload: Record<string, unknown> = {}) {
+    const pack = await onBuildAuthoringTemplate({
+      source: "compiled_preview",
+      mode,
+      ...payload,
+    });
+    if (pack) {
+      setAuthoringDraft(buildAuthoringDraftFromPack(pack));
+      setAuthoringDraftError("");
+    }
+  }
+
+  function handleExportDraft() {
+    const blob = new Blob([authoringDraft], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${project.projectId || "project"}-authoring-pack.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportDraftClick() {
+    importInputRef.current?.click();
+  }
+
+  async function handleImportDraftFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const content = await file.text();
+      setAuthoringDraft(content);
+      setAuthoringDraftError("");
+    } catch (error) {
+      setAuthoringDraftError(error instanceof Error ? error.message : "Failed to import JSON file.");
+    } finally {
+      event.target.value = "";
+    }
   }
 
   if (!project) {
@@ -589,6 +657,18 @@ export function ProjectEditor({
           >
             Load Current Draft
           </button>
+          <button className="ghost small" onClick={() => void handleBuildTemplate("replace")}>
+            Draft From Compiled
+          </button>
+          <button className="ghost small" onClick={() => void handleBuildTemplate("append")}>
+            Append From Compiled
+          </button>
+          <button className="ghost small" onClick={handleExportDraft}>
+            Export JSON
+          </button>
+          <button className="ghost small" onClick={handleImportDraftClick}>
+            Import JSON
+          </button>
           <button className="ghost small" onClick={handlePreviewDraft}>
             Preview Draft
           </button>
@@ -596,6 +676,7 @@ export function ProjectEditor({
             Apply Pack
           </button>
         </div>
+        <input ref={importInputRef} type="file" accept="application/json,.json" hidden onChange={handleImportDraftFile} />
         <label>
           Authoring JSON
           <textarea
@@ -667,6 +748,14 @@ export function ProjectEditor({
               <span>{compiledPreview.metricEvidence.length} metrics</span>
               <span>{compiledPreview.retrievalUnits.length} RU</span>
             </div>
+            <div className="action-row">
+              <button className="ghost small" onClick={() => void handleBuildTemplate("replace")}>
+                Replace Draft From Preview
+              </button>
+              <button className="ghost small" onClick={() => void handleBuildTemplate("append")}>
+                Append Preview To Draft
+              </button>
+            </div>
             <p>Last compile: {new Date(compiledPreview.compiledAt * 1000).toLocaleString()}</p>
             <div className="tokens">
               {compiledPreview.terminology.slice(0, 12).map((term) => (
@@ -701,6 +790,20 @@ export function ProjectEditor({
                   <span>{item.sourceKind}</span>
                   <span>{item.confidence}</span>
                 </div>
+                <div className="action-row">
+                  <button
+                    className="ghost small"
+                    onClick={() =>
+                      void handleBuildTemplate("append", {
+                        evidence_ids: [item.evidenceId],
+                        metric_ids: [],
+                        retrieval_unit_ids: [],
+                      })
+                    }
+                  >
+                    Add Evidence To Draft
+                  </button>
+                </div>
               </div>
             ))}
             {compiledPreview.metricEvidence.map((item) => (
@@ -712,6 +815,20 @@ export function ProjectEditor({
                 <p>
                   Baseline: {item.baseline || "--"} / Method: {item.method || "--"}
                 </p>
+                <div className="action-row">
+                  <button
+                    className="ghost small"
+                    onClick={() =>
+                      void handleBuildTemplate("append", {
+                        evidence_ids: [],
+                        metric_ids: [item.evidenceId],
+                        retrieval_unit_ids: [],
+                      })
+                    }
+                  >
+                    Add Metric To Draft
+                  </button>
+                </div>
               </div>
             ))}
             {compiledPreview.retrievalUnits.map((item) => (
@@ -725,6 +842,20 @@ export function ProjectEditor({
                   {item.supportingRefs.slice(0, 4).map((ref) => (
                     <span key={ref}>{ref}</span>
                   ))}
+                </div>
+                <div className="action-row">
+                  <button
+                    className="ghost small"
+                    onClick={() =>
+                      void handleBuildTemplate("append", {
+                        evidence_ids: [],
+                        metric_ids: [],
+                        retrieval_unit_ids: [item.unitId],
+                      })
+                    }
+                  >
+                    Add RU To Draft
+                  </button>
                 </div>
               </div>
             ))}

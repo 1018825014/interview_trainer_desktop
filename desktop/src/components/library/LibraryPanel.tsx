@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  buildLibraryProjectAuthoringPackTemplate,
   buildPresetSessionPayload,
   compareLibraryBundles,
   compileLibraryWorkspace,
@@ -998,6 +999,33 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     }
   }
 
+  async function handleBuildProjectAuthoringTemplate(
+    payload: Record<string, unknown>,
+  ): Promise<LibraryProjectAuthoringPackRecord | null> {
+    if (!backendOnline || !selectedProject) {
+      setProjectAuthoringStatus("请先连接后端并选择项目。");
+      return null;
+    }
+    try {
+      const template = await buildLibraryProjectAuthoringPackTemplate(
+        backendBaseUrl,
+        selectedProject.projectId,
+        payload,
+      );
+      setProjectAuthoringPack(template);
+      const mode = typeof payload.mode === "string" ? payload.mode : "replace";
+      setProjectAuthoringStatus(
+        mode === "append"
+          ? "已从 compiled preview 追加生成 authoring 草稿。"
+          : "已从 compiled preview 生成 authoring 草稿。",
+      );
+      return template;
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "生成 authoring template 失败。");
+      return null;
+    }
+  }
+
   async function handleApplyProjectAuthoringPack(payload: Record<string, unknown>) {
     if (!backendOnline || !selectedProject) {
       setProjectAuthoringStatus("请先连接后端并选择项目。");
@@ -1527,6 +1555,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
               authoringStatus={projectAuthoringStatus}
               compiledPreview={projectCompiledPreview}
               onChange={updateProject}
+              onBuildAuthoringTemplate={handleBuildProjectAuthoringTemplate}
               onPreviewAuthoringPack={handlePreviewProjectAuthoringPack}
               onApplyAuthoringPack={handleApplyProjectAuthoringPack}
               onCreateDocument={handleCreateProjectDocument}

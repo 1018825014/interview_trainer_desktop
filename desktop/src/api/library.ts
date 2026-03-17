@@ -585,6 +585,19 @@ export async function previewLibraryProjectAuthoringPack(
   return mapProjectAuthoringPack(response);
 }
 
+export async function buildLibraryProjectAuthoringPackTemplate(
+  baseUrl: string,
+  projectId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryProjectAuthoringPackRecord> {
+  const response = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/authoring-pack/template`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to build project authoring pack template",
+  });
+  return mapProjectAuthoringPack(response);
+}
+
 export async function updateLibraryProjectAuthoringPack(
   baseUrl: string,
   projectId: string,
