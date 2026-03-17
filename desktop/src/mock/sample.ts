@@ -3,6 +3,7 @@ import {
   AudioRecommendationView,
   AudioSessionView,
   CorrectionSuggestionView,
+  LibraryWorkspaceRecord,
   KnowledgeWorkspaceView,
   SessionBriefView,
   SessionBootstrapPayload,
@@ -123,6 +124,135 @@ export const sampleKnowledgeWorkspace: KnowledgeWorkspaceView = {
   roleDocTitle: "AI Agent Role Notes",
   roleDocContent: "Focus on latency, evaluation, tool calling, observability, and failure recovery.",
   compileSummary: null,
+};
+
+export const sampleLibraryWorkspace: LibraryWorkspaceRecord = {
+  workspaceId: "workspace-sample",
+  name: "Persistent Interview Library",
+  createdAt: Date.now() / 1000 - 7200,
+  updatedAt: Date.now() / 1000,
+  knowledge: {
+    profile: {
+      headline: "LLM application engineer focused on agent systems",
+      summary: "I build practical agent workflows with retrieval, orchestration, tracing, and evaluation.",
+      strengths: ["agent orchestration", "latency tuning", "evaluation design"],
+      targetRoles: ["AI Agent Engineer", "LLM Application Engineer"],
+      introMaterial: ["I build pragmatic agent systems with clear tradeoffs."],
+    },
+    projects: [
+      {
+        projectId: "project-agentops",
+        name: "AgentOps Console",
+        pitch30: "一个面向内部团队的 Agent 工作流控制台，重点是低延迟和可调试性。",
+        pitch90: "我会把它当成讲 agent orchestration、retrieval tradeoff 和 observability 的主项目。",
+        businessValue: "Help operators configure AI workflows with retrieval and tool calling.",
+        architecture: "React console + Python orchestration service + retrieval + tracing/evaluation.",
+        keyMetrics: ["Latency dropped from 1.8s to 900ms", "Escalation fallback coverage reached 95%"],
+        tradeoffs: ["优先做单 agent 稳定链路，再逐步引入 planner/worker。"],
+        failureCases: ["上游检索抖动时，回答会偏空，需要 fallback 和 tracing。"],
+        limitations: ["复杂任务弹性不如多 agent。"],
+        upgradePlan: ["继续做 hybrid retrieval 和 cached evidence ranking。"],
+        interviewerHooks: ["这个系统真正难的是索引和检索时延，而不是生成本身。"],
+        repoSummaries: [
+          {
+            repoId: "repo-agentops",
+            label: "AgentOps Console",
+            rootPath: "E:/projects/agentops-console",
+            status: "ready",
+            lastScannedAt: Date.now() / 1000,
+            importedDocs: 4,
+            importedCodeFiles: 12,
+          },
+        ],
+        documents: [
+          {
+            path: "README.md",
+            content:
+              "This project serves internal users and lets them configure agent workflows with lower engineering overhead.",
+          },
+        ],
+        codeFiles: [
+          {
+            path: "src/orchestrator/workflow.py",
+            content: "class WorkflowOrchestrator:\n    def run(self, state):\n        return state\n",
+          },
+        ],
+      },
+      {
+        projectId: "project-retrieval",
+        name: "Retrieval Ops Pipeline",
+        pitch30: "一个多项目资料库与面试问答编译系统，强调 retrieval-unit-first。",
+        pitch90: "我会用它讲 codebase indexing、evidence-aware answer planning 和 runtime routing。",
+        businessValue: "Help the assistant answer technical interviews from a pre-maintained project library.",
+        architecture: "SQLite metadata + local object storage + compile bundle + runtime answer control.",
+        keyMetrics: ["Starter stream under 250ms", "Full draft under 2s on local retrieval path"],
+        tradeoffs: ["把重计算前移到预编译阶段，现场只做 bounded retrieval。"],
+        failureCases: ["意图误判会导致 starter 结构跑偏，需要 follow-up state 修正。"],
+        limitations: ["暂时还没有代码图可视化。"],
+        upgradePlan: ["补模块关系图和更细粒度的 evidence ranking。"],
+        interviewerHooks: ["普通 RAG 不够，这里真正关键的是回答控制层。"],
+        repoSummaries: [],
+        documents: [],
+        codeFiles: [],
+      },
+    ],
+    roleDocuments: [
+      {
+        title: "Alibaba Agent Platform",
+        content: "Focus on agent systems, retrieval quality, evaluation, latency optimization, and observability.",
+      },
+    ],
+  },
+  overlays: [
+    {
+      overlayId: "overlay-alibaba",
+      name: "Alibaba Agent Platform",
+      company: "Alibaba",
+      jobDescription: "agent platform, retrieval, evaluation, latency optimization",
+      businessContext: "大型模型应用平台与 agent 工作流基础设施",
+      focusProjectIds: ["project-retrieval", "project-agentops"],
+      emphasisPoints: ["tradeoff", "latency", "ownership"],
+      styleProfile: ["口语化", "先结论后展开", "引导追问"],
+      depthPolicy: "deep",
+      createdAt: Date.now() / 1000 - 3600,
+      updatedAt: Date.now() / 1000,
+    },
+  ],
+  presets: [
+    {
+      presetId: "preset-alibaba",
+      name: "Alibaba 深挖版",
+      overlayId: "overlay-alibaba",
+      projectIds: ["project-retrieval", "project-agentops"],
+      includeRoleDocuments: true,
+      createdAt: Date.now() / 1000 - 1800,
+      updatedAt: Date.now() / 1000,
+    },
+  ],
+  compiledBundles: [
+    {
+      bundleId: "bundle-sample",
+      presetId: "preset-alibaba",
+      presetName: "Alibaba 深挖版",
+      overlayId: "overlay-alibaba",
+      overlayName: "Alibaba Agent Platform",
+      projectIds: ["project-retrieval", "project-agentops"],
+      projectNames: ["Retrieval Ops Pipeline", "AgentOps Console"],
+      projectCount: 2,
+      retrievalUnitCount: 9,
+      metricEvidenceCount: 4,
+      terminologyCount: 18,
+      builtAt: Date.now() / 1000,
+    },
+  ],
+  compileSummary: {
+    projects: ["AgentOps Console", "Retrieval Ops Pipeline"],
+    rolePlaybooks: ["Alibaba Agent Platform"],
+    terminologyCount: 18,
+    modules: 11,
+    docChunks: 15,
+    codeChunks: 21,
+  },
 };
 
 export const sampleCorrections: CorrectionSuggestionView[] = [

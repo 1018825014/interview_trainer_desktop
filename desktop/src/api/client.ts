@@ -1,5 +1,26 @@
 import { SessionBootstrapPayload, TranscriptPayload } from "../types";
 
+interface JsonRequestOptions {
+  method?: string;
+  payload?: unknown;
+  errorMessage: string;
+}
+
+export async function requestJson<T>(url: string, options: JsonRequestOptions): Promise<T> {
+  const init: RequestInit = {
+    method: options.method ?? "GET",
+  };
+  if (options.payload !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(options.payload);
+  }
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(options.errorMessage);
+  }
+  return (await response.json()) as T;
+}
+
 export async function pingBackend(baseUrl: string): Promise<boolean> {
   try {
     const response = await fetch(`${baseUrl}/health`);
@@ -10,43 +31,31 @@ export async function pingBackend(baseUrl: string): Promise<boolean> {
 }
 
 export async function fetchAudioRecommendation(baseUrl: string) {
-  const response = await fetch(`${baseUrl}/api/audio/recommendation`);
-  if (!response.ok) {
-    throw new Error("Failed to load audio recommendation");
-  }
-  return response.json();
+  return requestJson(`${baseUrl}/api/audio/recommendation`, {
+    errorMessage: "Failed to load audio recommendation",
+  });
 }
 
 export async function fetchAudioCapabilities(baseUrl: string) {
-  const response = await fetch(`${baseUrl}/api/audio/capabilities`);
-  if (!response.ok) {
-    throw new Error("Failed to load audio capabilities");
-  }
-  return response.json();
+  return requestJson(`${baseUrl}/api/audio/capabilities`, {
+    errorMessage: "Failed to load audio capabilities",
+  });
 }
 
 export async function createAudioSession(baseUrl: string, payload: Record<string, unknown>) {
-  const response = await fetch(`${baseUrl}/api/audio/sessions`, {
+  return requestJson(`${baseUrl}/api/audio/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to create audio session",
   });
-  if (!response.ok) {
-    throw new Error("Failed to create audio session");
-  }
-  return response.json();
 }
 
 export async function startAudioSession(baseUrl: string, audioSessionId: string) {
-  const response = await fetch(`${baseUrl}/api/audio/sessions/${audioSessionId}/start`, {
+  return requestJson(`${baseUrl}/api/audio/sessions/${audioSessionId}/start`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    payload: {},
+    errorMessage: "Failed to start audio session",
   });
-  if (!response.ok) {
-    throw new Error("Failed to start audio session");
-  }
-  return response.json();
 }
 
 export async function pushAudioFrame(
@@ -54,15 +63,11 @@ export async function pushAudioFrame(
   audioSessionId: string,
   payload: Record<string, unknown>,
 ) {
-  const response = await fetch(`${baseUrl}/api/audio/sessions/${audioSessionId}/frames`, {
+  return requestJson(`${baseUrl}/api/audio/sessions/${audioSessionId}/frames`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to push audio frame",
   });
-  if (!response.ok) {
-    throw new Error("Failed to push audio frame");
-  }
-  return response.json();
 }
 
 export async function transcribeAudioSession(
@@ -70,87 +75,61 @@ export async function transcribeAudioSession(
   audioSessionId: string,
   payload: Record<string, unknown>,
 ) {
-  const response = await fetch(`${baseUrl}/api/audio/sessions/${audioSessionId}/transcribe`, {
+  return requestJson(`${baseUrl}/api/audio/sessions/${audioSessionId}/transcribe`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to transcribe audio session",
   });
-  if (!response.ok) {
-    throw new Error("Failed to transcribe audio session");
-  }
-  return response.json();
 }
 
 export async function createLiveBridge(baseUrl: string, payload: Record<string, unknown>) {
-  const response = await fetch(`${baseUrl}/api/audio/live-bridges`, {
+  return requestJson(`${baseUrl}/api/audio/live-bridges`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to create live bridge",
   });
-  if (!response.ok) {
-    throw new Error("Failed to create live bridge");
-  }
-  return response.json();
 }
 
 export async function getLiveBridge(baseUrl: string, bridgeId: string) {
-  const response = await fetch(`${baseUrl}/api/audio/live-bridges/${bridgeId}`);
-  if (!response.ok) {
-    throw new Error("Failed to load live bridge");
-  }
-  return response.json();
+  return requestJson(`${baseUrl}/api/audio/live-bridges/${bridgeId}`, {
+    errorMessage: "Failed to load live bridge",
+  });
 }
 
 export async function stopLiveBridge(baseUrl: string, bridgeId: string) {
-  const response = await fetch(`${baseUrl}/api/audio/live-bridges/${bridgeId}/stop`, {
+  return requestJson(`${baseUrl}/api/audio/live-bridges/${bridgeId}/stop`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    payload: {},
+    errorMessage: "Failed to stop live bridge",
   });
-  if (!response.ok) {
-    throw new Error("Failed to stop live bridge");
-  }
-  return response.json();
 }
 
 export async function createSession(baseUrl: string, payload: SessionBootstrapPayload) {
-  const response = await fetch(`${baseUrl}/api/sessions`, {
+  return requestJson(`${baseUrl}/api/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to create session",
   });
-  if (!response.ok) {
-    throw new Error("Failed to create session");
-  }
-  return response.json();
 }
 
 export async function listWorkspaces(baseUrl: string) {
-  const response = await fetch(`${baseUrl}/api/workspaces`);
-  if (!response.ok) {
-    throw new Error("Failed to load workspaces");
-  }
-  return response.json();
+  return requestJson(`${baseUrl}/api/workspaces`, {
+    errorMessage: "Failed to load workspaces",
+  });
 }
 
 export async function createWorkspace(baseUrl: string, payload: Record<string, unknown>) {
-  const response = await fetch(`${baseUrl}/api/workspaces`, {
+  return requestJson(`${baseUrl}/api/workspaces`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to create workspace",
   });
-  if (!response.ok) {
-    throw new Error("Failed to create workspace");
-  }
-  return response.json();
 }
 
 export async function getWorkspace(baseUrl: string, workspaceId: string) {
-  const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}`);
-  if (!response.ok) {
-    throw new Error("Failed to load workspace");
-  }
-  return response.json();
+  return requestJson(`${baseUrl}/api/workspaces/${workspaceId}`, {
+    errorMessage: "Failed to load workspace",
+  });
 }
 
 export async function updateWorkspace(
@@ -158,27 +137,19 @@ export async function updateWorkspace(
   workspaceId: string,
   payload: Record<string, unknown>,
 ) {
-  const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}`, {
+  return requestJson(`${baseUrl}/api/workspaces/${workspaceId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to update workspace",
   });
-  if (!response.ok) {
-    throw new Error("Failed to update workspace");
-  }
-  return response.json();
 }
 
 export async function compileWorkspace(baseUrl: string, workspaceId: string) {
-  const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/compile`, {
+  return requestJson(`${baseUrl}/api/workspaces/${workspaceId}/compile`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    payload: {},
+    errorMessage: "Failed to compile workspace",
   });
-  if (!response.ok) {
-    throw new Error("Failed to compile workspace");
-  }
-  return response.json();
 }
 
 export async function importWorkspacePath(
@@ -186,45 +157,31 @@ export async function importWorkspacePath(
   workspaceId: string,
   payload: Record<string, unknown>,
 ) {
-  const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/import-path`, {
+  return requestJson(`${baseUrl}/api/workspaces/${workspaceId}/import-path`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to import workspace path",
   });
-  if (!response.ok) {
-    throw new Error("Failed to import workspace path");
-  }
-  return response.json();
 }
 
 export async function getAnswer(baseUrl: string, sessionId: string, turnId: string) {
-  const response = await fetch(`${baseUrl}/api/sessions/${sessionId}/answers/${turnId}`);
-  if (!response.ok) {
-    throw new Error("Failed to load answer");
-  }
-  return response.json();
+  return requestJson(`${baseUrl}/api/sessions/${sessionId}/answers/${turnId}`, {
+    errorMessage: "Failed to load answer",
+  });
 }
 
 export async function sendTranscript(baseUrl: string, sessionId: string, payload: TranscriptPayload) {
-  const response = await fetch(`${baseUrl}/api/sessions/${sessionId}/transcripts`, {
+  return requestJson(`${baseUrl}/api/sessions/${sessionId}/transcripts`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    payload,
+    errorMessage: "Failed to send transcript",
   });
-  if (!response.ok) {
-    throw new Error("Failed to send transcript");
-  }
-  return response.json();
 }
 
 export async function tickSession(baseUrl: string, sessionId: string, nowTs: number) {
-  const response = await fetch(`${baseUrl}/api/sessions/${sessionId}/tick`, {
+  return requestJson(`${baseUrl}/api/sessions/${sessionId}/tick`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ now_ts: nowTs }),
+    payload: { now_ts: nowTs },
+    errorMessage: "Failed to tick session",
   });
-  if (!response.ok) {
-    throw new Error("Failed to tick session");
-  }
-  return response.json();
 }

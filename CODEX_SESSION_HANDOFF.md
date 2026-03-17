@@ -57,10 +57,10 @@ The future spec records what still needs to be built next.
   - create/list/update
   - compile
   - import local project path
-- Minimal desktop workspace panel:
-  - profile/project/role notes
-  - local path import
-  - compile and attach to session
+- Persistent desktop library panel:
+  - multi-workspace / multi-project / multi-overlay / multi-preset navigation
+  - project / overlay / preset editors
+  - compile, local repo import, bundle summary, and session activation
 
 ## Generation config model
 
@@ -111,7 +111,10 @@ Recommended current setup:
 ## Known gaps
 
 - Multi-interviewer speaker separation inside the system stream is not implemented
-- Minimal workspace UI exists, but richer upload/indexing UX still needs to be built
+- Desktop library UX is now usable, but still lacks:
+  - document-specific CRUD surfaces
+  - repo reindex controls
+  - richer bundle history / compare views
 - Need more real-user testing on:
   - naturalness
   - latency tolerance
@@ -129,6 +132,7 @@ Recommended current setup:
   - Stage 4 overlays, presets, bundles, and session-payload activation
   - Stage 5 runtime answer-plan integration
   - Stage 6 retrieval-unit-first and evidence-aware runtime routing
+  - Stage 7 desktop persistent library UX and session activation flow
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -269,10 +273,34 @@ Recommended current setup:
     - `test_generation.py`
     - `test_service.py`
   - full backend unittest: `44/44` passing
+- Stage 7 implemented:
+  - added dedicated frontend library types and `/api/library/...` API client:
+    - `desktop/src/types/library.ts`
+    - `desktop/src/api/library.ts`
+  - split the old single-workspace form out of `App.tsx` into dedicated components:
+    - `LibraryPanel`
+    - `WorkspaceNav`
+    - `ProjectEditor`
+    - `OverlayEditor`
+    - `PresetEditor`
+    - `StatusRail`
+  - desktop app now supports:
+    - browsing persistent workspaces, projects, overlays, presets, and bundle summaries
+    - editing project answer fields, overlay focus/style, and preset project selection
+    - compiling the active workspace
+    - importing a local repo into the selected project
+    - building preset-backed session payloads
+    - attaching a preset directly to the current interview session via existing `create_session`
+  - `App.tsx` now keeps audio / ASR / live bridge sections intact while delegating knowledge-library UX to the new panel
+- Stage 7 verification:
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `44/44` passing
 - Recommended next implementation order:
-  1. desktop library UI split and management flow
+  1. document CRUD + repo reindex controls in desktop library UI
   2. richer indexing and evidence authoring surfaces
-  3. bundle history and activation UX polish
+  3. bundle history / compare / reuse UX polish
   4. deeper retrieval ranking and hook control tuning
 
 ## Best next debugging tasks

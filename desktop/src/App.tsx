@@ -1,26 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  compileWorkspace,
-  createWorkspace,
   createLiveBridge,
   createAudioSession,
   createSession,
   fetchAudioCapabilities,
   fetchAudioRecommendation,
-  getWorkspace,
   getAnswer,
   getLiveBridge,
-  importWorkspacePath,
-  listWorkspaces,
   pingBackend,
   pushAudioFrame,
   sendTranscript,
   startAudioSession,
   stopLiveBridge,
-  updateWorkspace,
   tickSession,
   transcribeAudioSession,
 } from "./api/client";
+import { LibraryPanel } from "./components/library/LibraryPanel";
 import {
   demoTurnTranscript,
   sampleAnswer,
@@ -28,7 +23,6 @@ import {
   sampleAudioSession,
   sampleBrief,
   sampleCorrections,
-  sampleKnowledgeWorkspace,
   sampleSessionPayload,
   sampleTranscripts,
 } from "./mock/sample";
@@ -42,7 +36,7 @@ import {
   AudioSessionView,
   AudioTranscriptionView,
   CorrectionSuggestionView,
-  KnowledgeWorkspaceView,
+  LibrarySessionPayload,
   LiveBridgeView,
   PartialTranscriptView,
   SessionBriefView,
@@ -68,9 +62,6 @@ function App() {
   const [transcripts, setTranscripts] = useState<TranscriptFeedItem[]>(sampleTranscripts);
   const [partialTranscripts, setPartialTranscripts] = useState<PartialTranscriptView[]>([]);
   const [answer, setAnswer] = useState<AnswerView>(sampleAnswer);
-  const [workspace, setWorkspace] = useState<KnowledgeWorkspaceView>(sampleKnowledgeWorkspace);
-  const [workspaceImportPath, setWorkspaceImportPath] = useState("");
-  const [workspaceStatus, setWorkspaceStatus] = useState("Draft only");
   const [corrections, setCorrections] = useState<CorrectionSuggestionView[]>(sampleCorrections);
   const [errorMessage, setErrorMessage] = useState("");
   const backendBaseUrl = window.interviewTrainer?.backendBaseUrl ?? "http://127.0.0.1:8000";
@@ -127,33 +118,6 @@ function App() {
       cancelled = true;
     };
   }, [backendOnline, backendBaseUrl, audioFetchedAt]);
-
-  useEffect(() => {
-    if (!backendOnline) {
-      return;
-    }
-    let cancelled = false;
-    const loadWorkspace = async () => {
-      try {
-        const payload = await listWorkspaces(backendBaseUrl);
-        const first = Array.isArray(payload.workspaces) ? payload.workspaces[0] : null;
-        if (!first || cancelled) {
-          return;
-        }
-        const full = await getWorkspace(backendBaseUrl, String(first.workspace_id));
-        if (!cancelled) {
-          setWorkspace(mapWorkspace(full));
-          setWorkspaceStatus("Loaded from backend");
-        }
-      } catch {
-        // ignore and keep local draft
-      }
-    };
-    void loadWorkspace();
-    return () => {
-      cancelled = true;
-    };
-  }, [backendOnline, backendBaseUrl]);
 
   const deviceCatalog = useMemo(() => {
     const byBackend = new Map<string, AudioDeviceView[]>();
@@ -251,95 +215,31 @@ function App() {
     setAlwaysOnTop(nextValue);
   }
 
-  async function ensureWorkspaceSaved(): Promise<KnowledgeWorkspaceView> {
-    const payload = buildWorkspacePayload(workspace);
-    if (!workspace.workspaceId) {
-      const created = await createWorkspace(backendBaseUrl, payload);
-      const mapped = mapWorkspace(created);
-      setWorkspace(mapped);
-      setWorkspaceStatus("Workspace created");
-      return mapped;
-    }
-    const updated = await updateWorkspace(backendBaseUrl, workspace.workspaceId, payload);
-    const mapped = mapWorkspace(updated);
-    setWorkspace(mapped);
-    setWorkspaceStatus("Workspace saved");
-    return mapped;
-  }
-
-  async function handleCreateWorkspace() {
-    setErrorMessage("");
-    try {
-      const created = await createWorkspace(backendBaseUrl, buildWorkspacePayload(workspace));
-      setWorkspace(mapWorkspace(created));
-      setWorkspaceStatus("Workspace created");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "创建资料工作区失败");
-    }
-  }
-
-  async function handleSaveWorkspace() {
-    setErrorMessage("");
-    try {
-      await ensureWorkspaceSaved();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "保存资料工作区失败");
-    }
-  }
-
-  async function handleCompileWorkspace() {
-    setErrorMessage("");
-    try {
-      const saved = await ensureWorkspaceSaved();
-      const compiled = await compileWorkspace(backendBaseUrl, saved.workspaceId);
-      setWorkspace(mapWorkspace(compiled));
-      setWorkspaceStatus("Workspace compiled");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "编译资料工作区失败");
-    }
-  }
-
-  async function handleImportWorkspacePath() {
-    setErrorMessage("");
-    try {
-      const saved = await ensureWorkspaceSaved();
-      const imported = await importWorkspacePath(backendBaseUrl, saved.workspaceId, {
-        path: workspaceImportPath,
-        project_name: workspace.projectName || "Imported Project",
-      });
-      setWorkspace(mapWorkspace(imported));
-      const importSummary = imported.import_summary;
-      if (importSummary) {
-        setWorkspaceStatus(
-          `Imported ${importSummary.imported_docs} docs + ${importSummary.imported_code_files} code files`,
-        );
-      } else {
-        setWorkspaceStatus("Project path imported");
-      }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "导入项目路径失败");
-    }
-  }
-
-  async function handleUseWorkspaceForSession() {
+  async function handleActivateLibrarySession(payload: LibrarySessionPayload) {
     setErrorMessage("");
     setDemoStatus("creating_session");
     try {
-      const saved = await ensureWorkspaceSaved();
       const response = await createSession(backendBaseUrl, {
-        knowledge: buildWorkspaceKnowledge(saved),
+        knowledge: payload.knowledge,
         briefing: {
-          company: brief.company,
-          business_context: brief.businessContext,
-          job_description: brief.jobDescription,
+          company: payload.briefing.company,
+          business_context: payload.briefing.businessContext,
+          job_description: payload.briefing.jobDescription,
         },
       });
       setSessionId(response.session_id);
+      setBrief({
+        company: payload.briefing.company,
+        businessContext: payload.briefing.businessContext,
+        jobDescription: payload.briefing.jobDescription,
+        focusTopics: payload.briefing.focusTopics,
+        priorityProjects: payload.briefing.priorityProjects,
+        likelyQuestions: payload.briefing.likelyQuestions,
+      });
       setDemoStatus("ready");
-      setWorkspaceStatus("Workspace attached to live session");
     } catch (error) {
       setDemoStatus("error");
-      setErrorMessage(error instanceof Error ? error.message : "用资料工作区创建会话失败");
+      setErrorMessage(error instanceof Error ? error.message : "用资料库 preset 创建会话失败");
     }
   }
 
@@ -606,158 +506,11 @@ function App() {
       </header>
 
       <main className="grid">
-        <section className="panel panel-workspace">
-          <div className="panel-head">
-            <span>资料工作区</span>
-            <strong>{workspace.workspaceId ? "已保存" : "本地草稿"}</strong>
-          </div>
-          <label>
-            工作区名称
-            <input
-              value={workspace.name}
-              onChange={(event) => setWorkspace({ ...workspace, name: event.target.value })}
-            />
-          </label>
-          <label>
-            项目路径导入
-            <input
-              value={workspaceImportPath}
-              onChange={(event) => setWorkspaceImportPath(event.target.value)}
-              placeholder="E:\\path\\to\\your\\project"
-            />
-          </label>
-          <div className="action-row">
-            <button className="ghost accent small" disabled={!backendOnline} onClick={handleCreateWorkspace}>
-              创建工作区
-            </button>
-            <button className="ghost small" disabled={!backendOnline} onClick={handleSaveWorkspace}>
-              保存资料
-            </button>
-            <button className="ghost small" disabled={!backendOnline} onClick={handleCompileWorkspace}>
-              编译资料
-            </button>
-            <button
-              className="ghost small"
-              disabled={!backendOnline || !workspaceImportPath.trim()}
-              onClick={handleImportWorkspacePath}
-            >
-              导入路径
-            </button>
-            <button className="ghost small" disabled={!backendOnline} onClick={handleUseWorkspaceForSession}>
-              用于会话
-            </button>
-          </div>
-          <p className="backend-meta">{workspaceStatus}</p>
-          {workspace.compileSummary ? (
-            <div className="session-chip">
-              <strong>{workspace.compileSummary.projects.join(", ") || "No project"}</strong>
-              <span>{workspace.compileSummary.modules} modules</span>
-              <span>{workspace.compileSummary.doc_chunks} docs</span>
-              <span>{workspace.compileSummary.code_chunks} code chunks</span>
-              <span>{workspace.compileSummary.terminology_count} terms</span>
-            </div>
-          ) : null}
-          <label>
-            背景标题
-            <input
-              value={workspace.profileHeadline}
-              onChange={(event) => setWorkspace({ ...workspace, profileHeadline: event.target.value })}
-            />
-          </label>
-          <label>
-            背景摘要
-            <textarea
-              rows={4}
-              value={workspace.profileSummary}
-              onChange={(event) => setWorkspace({ ...workspace, profileSummary: event.target.value })}
-            />
-          </label>
-          <label>
-            个人强项（每行一个）
-            <textarea
-              rows={4}
-              value={workspace.profileStrengths}
-              onChange={(event) => setWorkspace({ ...workspace, profileStrengths: event.target.value })}
-            />
-          </label>
-          <label>
-            目标岗位（每行一个）
-            <textarea
-              rows={3}
-              value={workspace.targetRoles}
-              onChange={(event) => setWorkspace({ ...workspace, targetRoles: event.target.value })}
-            />
-          </label>
-          <label>
-            自我介绍素材
-            <textarea
-              rows={3}
-              value={workspace.introMaterial}
-              onChange={(event) => setWorkspace({ ...workspace, introMaterial: event.target.value })}
-            />
-          </label>
-          <label>
-            项目名称
-            <input
-              value={workspace.projectName}
-              onChange={(event) => setWorkspace({ ...workspace, projectName: event.target.value })}
-            />
-          </label>
-          <label>
-            项目业务价值
-            <textarea
-              rows={3}
-              value={workspace.projectBusinessValue}
-              onChange={(event) => setWorkspace({ ...workspace, projectBusinessValue: event.target.value })}
-            />
-          </label>
-          <label>
-            项目架构
-            <textarea
-              rows={3}
-              value={workspace.projectArchitecture}
-              onChange={(event) => setWorkspace({ ...workspace, projectArchitecture: event.target.value })}
-            />
-          </label>
-          <label>
-            项目说明 / 面试素材
-            <textarea
-              rows={6}
-              value={workspace.projectDocument}
-              onChange={(event) => setWorkspace({ ...workspace, projectDocument: event.target.value })}
-            />
-          </label>
-          <label>
-            关键代码路径
-            <input
-              value={workspace.codePath}
-              onChange={(event) => setWorkspace({ ...workspace, codePath: event.target.value })}
-            />
-          </label>
-          <label>
-            关键代码片段
-            <textarea
-              rows={7}
-              value={workspace.codeContent}
-              onChange={(event) => setWorkspace({ ...workspace, codeContent: event.target.value })}
-            />
-          </label>
-          <label>
-            岗位资料标题
-            <input
-              value={workspace.roleDocTitle}
-              onChange={(event) => setWorkspace({ ...workspace, roleDocTitle: event.target.value })}
-            />
-          </label>
-          <label>
-            岗位资料内容
-            <textarea
-              rows={5}
-              value={workspace.roleDocContent}
-              onChange={(event) => setWorkspace({ ...workspace, roleDocContent: event.target.value })}
-            />
-          </label>
-        </section>
+        <LibraryPanel
+          backendBaseUrl={backendBaseUrl}
+          backendOnline={backendOnline}
+          onActivateSession={handleActivateLibrarySession}
+        />
 
         <section className="panel panel-brief">
           <div className="panel-head">
@@ -1204,96 +957,6 @@ function mapBackendAnswer(raw: any): AnswerView {
     },
     error: raw.error ?? "",
   };
-}
-
-function mapWorkspace(raw: any): KnowledgeWorkspaceView {
-  const profile = raw.knowledge?.profile ?? {};
-  const project = raw.knowledge?.projects?.[0] ?? {};
-  const document = project.documents?.[0] ?? {};
-  const codeFile = project.code_files?.[0] ?? {};
-  const roleDocument = raw.knowledge?.role_documents?.[0] ?? {};
-  return {
-    workspaceId: raw.workspace_id ?? "",
-    name: raw.name ?? "Interview Workspace",
-    createdAt: raw.created_at ?? null,
-    updatedAt: raw.updated_at ?? null,
-    profileHeadline: profile.headline ?? "",
-    profileSummary: profile.summary ?? "",
-    profileStrengths: joinLines(profile.strengths ?? []),
-    targetRoles: joinLines(profile.target_roles ?? []),
-    introMaterial: joinLines(profile.intro_material ?? []),
-    projectName: project.name ?? "",
-    projectBusinessValue: project.business_value ?? "",
-    projectArchitecture: project.architecture ?? "",
-    projectDocument: document.content ?? "",
-    codePath: codeFile.path ?? "src/main.py",
-    codeContent: codeFile.content ?? "",
-    roleDocTitle: roleDocument.title ?? "Role Notes",
-    roleDocContent: roleDocument.content ?? "",
-    compileSummary: raw.compile_summary ?? null,
-  };
-}
-
-function buildWorkspacePayload(workspace: KnowledgeWorkspaceView) {
-  return {
-    name: workspace.name,
-    knowledge: buildWorkspaceKnowledge(workspace),
-  };
-}
-
-function buildWorkspaceKnowledge(workspace: KnowledgeWorkspaceView) {
-  const projects =
-    workspace.projectName || workspace.projectDocument || workspace.codeContent
-      ? [
-          {
-            name: workspace.projectName || "Interview Project",
-            business_value: workspace.projectBusinessValue,
-            architecture: workspace.projectArchitecture,
-            documents: workspace.projectDocument
-              ? [{ path: "notes.md", content: workspace.projectDocument }]
-              : [],
-            code_files: workspace.codeContent
-              ? [{ path: workspace.codePath || "src/main.py", content: workspace.codeContent }]
-              : [],
-          },
-        ]
-      : [];
-
-  const roleDocuments = workspace.roleDocContent
-    ? [
-        {
-          title: workspace.roleDocTitle || "Role Notes",
-          content: workspace.roleDocContent,
-        },
-      ]
-    : [];
-
-  return {
-    profile: {
-      headline: workspace.profileHeadline,
-      summary: workspace.profileSummary,
-      strengths: splitLines(workspace.profileStrengths),
-      target_roles: splitLines(workspace.targetRoles),
-      intro_material: splitLines(workspace.introMaterial),
-    },
-    projects,
-    role_documents: roleDocuments,
-  };
-}
-
-function splitLines(value: string): string[] {
-  return value
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function joinLines(value: unknown): string {
-  if (!Array.isArray(value)) {
-    return "";
-  }
-  return value.map((item) => String(item)).join("\n");
 }
 
 export default App;

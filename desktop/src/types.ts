@@ -248,3 +248,22 @@ export interface TranscriptPayload {
   ts_end: number;
   turn_id?: string;
 }
+
+export type {
+  LibraryBriefingPayload,
+  LibraryBundleSummaryRecord,
+  LibraryCodeFileRecord,
+  LibraryCompileSummaryRecord,
+  LibraryDocumentRecord,
+  LibraryEntitySelection,
+  LibraryImportSummary,
+  LibraryKnowledgeRecord,
+  LibraryOverlayRecord,
+  LibraryPresetRecord,
+  LibraryProfileRecord,
+  LibraryProjectRecord,
+  LibraryRepoSummaryRecord,
+  LibraryRoleDocumentRecord,
+  LibrarySessionPayload,
+  LibraryWorkspaceRecord,
+} from "./types/library";
