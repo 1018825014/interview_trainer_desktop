@@ -7,7 +7,7 @@ from uuid import uuid4
 from .briefing import BriefingBuilder
 from .config import GenerationSettings
 from .corrections import TerminologyCorrector
-from .generation import DraftFutures, DualDraftComposer, build_dual_draft_composer
+from .generation import DraftFutures, DualDraftComposer, StarterPrewarm, build_dual_draft_composer
 from .knowledge import KnowledgeCompiler
 from .routing import ContextRouter
 from .turns import TurnManager
@@ -23,6 +23,8 @@ from .types import (
 
 
 class InterviewTrainerService:
+    _PREWARM_MIN_CHARS = 32
+
     def __init__(
         self,
         *,
@@ -40,6 +42,7 @@ class InterviewTrainerService:
         self.sessions: dict[str, InterviewSession] = {}
         self.turn_managers: dict[str, TurnManager] = {}
         self.pending_answer_jobs: dict[str, dict[str, DraftFutures]] = {}
+        self.pending_prewarm_jobs: dict[str, dict[str, StarterPrewarm]] = {}
         self._lock = threading.RLock()
 
     def compile_knowledge(self, payload: dict) -> dict:
@@ -64,6 +67,7 @@ class InterviewTrainerService:
             )
             self.turn_managers[session_id] = TurnManager()
             self.pending_answer_jobs[session_id] = {}
+            self.pending_prewarm_jobs[session_id] = {}
             return {
                 "session_id": session_id,
                 "briefing": asdict(briefing),
@@ -99,6 +103,7 @@ class InterviewTrainerService:
                 session.actual_candidate_history.append(event.text.strip())
 
             decision = turn_manager.ingest(event)
+            self._maybe_start_prewarm(session_id, session, turn_manager, event, decision)
             if not decision.should_generate:
                 timer_decision = turn_manager.tick(event.ts_end)
                 if timer_decision.should_generate:
@@ -172,6 +177,7 @@ class InterviewTrainerService:
         if decision.turn_id not in session.answer_history:
             route = self.router.route(decision.locked_question, session.knowledge, session.briefing)
             pack = self.router.build_pack(decision.locked_question, route, session.knowledge)
+            prewarm = self._pop_matching_prewarm(session_id, decision.turn_id, decision.locked_question)
             session.answer_history[decision.turn_id] = {
                 "turn_id": decision.turn_id,
                 "question": decision.locked_question,
@@ -184,17 +190,28 @@ class InterviewTrainerService:
                     "starter_ms": None,
                     "full_ms": None,
                 },
+                "prewarmed_starter": bool(prewarm),
                 "error": "",
             }
-            self.pending_answer_jobs[session_id][decision.turn_id] = self.composer.start(
-                turn_id=decision.turn_id,
-                question=decision.locked_question,
-                route=route,
-                pack=pack,
-                knowledge=session.knowledge,
-                briefing=session.briefing,
-                candidate_history=session.actual_candidate_history,
-            )
+            if prewarm is not None:
+                self.pending_answer_jobs[session_id][decision.turn_id] = self.composer.start_with_existing_starter(
+                    prewarm=prewarm,
+                    route=route,
+                    pack=pack,
+                    knowledge=session.knowledge,
+                    briefing=session.briefing,
+                    candidate_history=session.actual_candidate_history,
+                )
+            else:
+                self.pending_answer_jobs[session_id][decision.turn_id] = self.composer.start(
+                    turn_id=decision.turn_id,
+                    question=decision.locked_question,
+                    route=route,
+                    pack=pack,
+                    knowledge=session.knowledge,
+                    briefing=session.briefing,
+                    candidate_history=session.actual_candidate_history,
+                )
 
         self._collect_answer_update(session_id, session, decision.turn_id)
         return {"answer": session.answer_history[decision.turn_id]}
@@ -281,3 +298,54 @@ class InterviewTrainerService:
             else:
                 answer["status"] = AnswerStatus.COMPLETE.value
             self.pending_answer_jobs[session_id].pop(turn_id, None)
+
+    def _maybe_start_prewarm(
+        self,
+        session_id: str,
+        session: InterviewSession,
+        turn_manager: TurnManager,
+        event: TranscriptEvent,
+        decision: TurnDecision,
+    ) -> None:
+        if event.speaker != Speaker.INTERVIEWER or not decision.turn_id:
+            return
+        if decision.should_generate or decision.overlap_detected:
+            return
+        if decision.turn_id in session.answer_history:
+            return
+        if decision.turn_id in self.pending_prewarm_jobs[session_id]:
+            return
+        question_seed = turn_manager.current_question().strip()
+        if len(question_seed) < self._PREWARM_MIN_CHARS:
+            return
+
+        route = self.router.route(question_seed, session.knowledge, session.briefing)
+        pack = self.router.build_pack(question_seed, route, session.knowledge)
+        self.pending_prewarm_jobs[session_id][decision.turn_id] = self.composer.start_starter_prewarm(
+            turn_id=decision.turn_id,
+            question=question_seed,
+            route=route,
+            pack=pack,
+            knowledge=session.knowledge,
+            briefing=session.briefing,
+            candidate_history=session.actual_candidate_history,
+        )
+
+    def _pop_matching_prewarm(
+        self,
+        session_id: str,
+        turn_id: str,
+        locked_question: str,
+    ) -> StarterPrewarm | None:
+        prewarm = self.pending_prewarm_jobs.get(session_id, {}).pop(turn_id, None)
+        if prewarm is None:
+            return None
+
+        seed = prewarm.question.strip()
+        question = locked_question.strip()
+        if not seed or not question:
+            return None
+        if question.startswith(seed) or seed.startswith(question) or seed in question or question in seed:
+            prewarm.question = question
+            return prewarm
+        return None

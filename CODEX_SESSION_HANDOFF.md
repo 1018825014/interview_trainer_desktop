@@ -40,6 +40,9 @@ The future spec records what still needs to be built next.
   - `audio session -> ASR -> interview session -> answer`
 - Partial transcripts for Realtime ASR
 - Adaptive gate + lightweight VAD
+- Starter prewarm:
+  - interviewer partial transcripts can prewarm a `starter`
+  - locked questions can reuse the warmed fast-lane draft instead of always starting cold
 - Streaming starter answer state:
   - `pending`
   - `starter_streaming`
@@ -93,7 +96,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `33/33` passing
+- Backend tests: `34/34` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -107,6 +110,9 @@ Recommended current setup:
   - `smart=gpt-5.4`
   - immediate starter works
   - `full` may still take longer than short debug windows
+- Runtime prewarm regression:
+  - partial interviewer transcript now prewarms the starter lane
+  - locked question reuses the warmed starter when the partial and final question match
 
 ## Known gaps
 
