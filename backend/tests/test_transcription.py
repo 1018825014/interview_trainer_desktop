@@ -750,6 +750,45 @@ class RealtimeStreamFactoryTests(unittest.TestCase):
         self.assertEqual(completed[0].text, "请介绍一下你的RAG项目")
         self.assertEqual(completed[0].language, "zh")
 
+    def test_alibaba_realtime_stream_clears_pending_task_when_task_finishes_without_text(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+        )
+        stream = AudioTranscriptionService._default_realtime_stream_factory(
+            settings,
+            AudioSource.SYSTEM,
+            "zh",
+            "",
+        )
+        metadata = RealtimeChunkMetadata(
+            source=AudioSource.SYSTEM,
+            speaker=Speaker.INTERVIEWER,
+            final=True,
+            ts_start=0.0,
+            ts_end=1.0,
+            duration_ms=1000.0,
+            num_frames=4,
+            language="zh",
+            prompt="",
+            session_snapshot={},
+            signal={},
+            interview_session_id="session-1",
+            auto_tick_offset_s=1.0,
+            turn_id="turn-1",
+        )
+
+        stream._socket = object()
+        stream._drain_socket = lambda **kwargs: None
+        stream._pending_by_task_id["task-2"] = metadata
+        stream._started_task_ids.add("task-2")
+        stream._handle_event({"header": {"event": "task-finished", "task_id": "task-2"}})
+
+        self.assertFalse(stream._pending_by_task_id)
+        self.assertFalse(stream._started_task_ids)
+        self.assertFalse(stream.poll_completed(limit=4))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -649,12 +649,11 @@ class AlibabaRealtimeTranscriptionStream:
             return
         if event_type == "task-finished":
             self._started_task_ids.discard(task_id)
-            metadata = self._pending_by_task_id.get(task_id)
+            metadata = self._pending_by_task_id.pop(task_id, None)
             if metadata is None:
                 return
             transcript_text = self._partial_text_by_task_id.get(task_id, "").strip()
             if transcript_text:
-                self._pending_by_task_id.pop(task_id, None)
                 self._partial_text_by_task_id.pop(task_id, None)
                 self._completed.append(
                     RealtimeTranscriptEvent(
