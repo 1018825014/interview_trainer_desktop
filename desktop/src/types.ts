@@ -222,6 +222,8 @@ export interface LiveBridgeView {
   last_skip_reason: string;
   source_state: Record<string, BridgeSourceStateView>;
   partial_transcripts: PartialTranscriptView[];
+  active_asr_mode: "chunk" | "realtime" | string;
+  realtime_fallback_reason: string;
 }
 
 export interface AnswerView {

@@ -961,9 +961,16 @@ function App() {
             <div className="route-banner">
               <span>实时桥接</span>
               <p>
-                {liveBridge.status} | {liveBridge.poll_interval_ms}ms poll | {liveBridge.cycles} cycles |{" "}
-                {liveBridge.transcripts_processed} transcripts
+                {liveBridge.status} | mode {liveBridge.active_asr_mode} | {liveBridge.poll_interval_ms}ms poll |{" "}
+                {liveBridge.cycles} cycles | {liveBridge.transcripts_processed} transcripts
               </p>
+            </div>
+          ) : null}
+
+          {liveBridge?.realtime_fallback_reason ? (
+            <div className="route-banner">
+              <span>ASR 回退</span>
+              <p>{liveBridge.realtime_fallback_reason}</p>
             </div>
           ) : null}
 

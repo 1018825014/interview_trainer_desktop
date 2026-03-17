@@ -140,7 +140,7 @@ Default ASR is `template`. Real OpenAI chunked or realtime transcription can be 
 ```powershell
 set INTERVIEW_TRAINER_LLM_PROVIDER=openai
 set INTERVIEW_TRAINER_LLM_API_KEY=sk-...
-set INTERVIEW_TRAINER_LLM_BASE_URL=https://api.openai.com/v1
+set INTERVIEW_TRAINER_LLM_BASE_URL=https://subrouter.ai/v1
 set INTERVIEW_TRAINER_FAST_MODEL=gpt-4.1-mini
 set INTERVIEW_TRAINER_SMART_MODEL=gpt-4.1
 set INTERVIEW_TRAINER_LLM_STARTER_STREAM=true
@@ -208,7 +208,7 @@ set INTERVIEW_TRAINER_VAD_MIN_FRAMES=2
 set INTERVIEW_TRAINER_VAD_MAX_ZCR=0.35
 set INTERVIEW_TRAINER_VAD_MIN_DELTA=0.0005
 set INTERVIEW_TRAINER_VAD_HANGOVER_FRAMES=1
-set OPENAI_BASE_URL=https://api.openai.com/v1
+set OPENAI_BASE_URL=https://subrouter.ai/v1
 ```
 
 For live bridge streaming via the Realtime API:
@@ -222,7 +222,7 @@ set INTERVIEW_TRAINER_ASR_REALTIME_CONNECT_TIMEOUT_S=10
 set INTERVIEW_TRAINER_ASR_REALTIME_RECV_TIMEOUT_S=0.05
 set INTERVIEW_TRAINER_ASR_REALTIME_DRAIN_TIMEOUT_S=1.2
 set INTERVIEW_TRAINER_ASR_REALTIME_BETA_HEADER=realtime=v1
-set OPENAI_BASE_URL=https://api.openai.com/v1
+set OPENAI_BASE_URL=https://subrouter.ai/v1
 ```
 
 For live bridge streaming via Alibaba Cloud realtime ASR:
@@ -249,7 +249,7 @@ Notes:
 - direct `POST /api/audio/sessions/{audio_session_id}/transcribe` stays on chunked transcription even when `INTERVIEW_TRAINER_ASR_PROVIDER=openai_realtime`
 - the live bridge uses local VAD/buffering to decide chunk boundaries, then sends those chunks over a persistent Realtime WebSocket
 - when Realtime is enabled, the bridge also exposes `partial_transcripts` so the UI can show live incremental text before the final transcript lands
-- `INTERVIEW_TRAINER_ASR_PROVIDER=alibaba_realtime` currently applies to the live bridge path; direct chunk transcription remains on the existing chunk provider path
+- `INTERVIEW_TRAINER_ASR_PROVIDER=alibaba_realtime` now also covers direct chunk transcription and realtime fallback chunks by using a one-shot Alibaba realtime ASR call
 - for interview terminology accuracy on Alibaba ASR, create a custom vocabulary in DashScope and set `INTERVIEW_TRAINER_ALIBABA_VOCABULARY_ID`
 
 ### Optional audio dependencies

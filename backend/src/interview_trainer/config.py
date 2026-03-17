@@ -20,7 +20,7 @@ def _split_csv(raw_value: str) -> list[str]:
 class GenerationLaneSettings:
     provider: str = "template"
     api_key: str = ""
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str = "https://subrouter.ai/v1"
     model: str = ""
     request_timeout_s: float = 30.0
     temperature: float = 0.7
@@ -35,15 +35,15 @@ class GenerationLaneSettings:
 class GenerationSettings:
     provider: str = "template"
     openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
+    openai_base_url: str = "https://subrouter.ai/v1"
     fast_provider: str = "template"
     fast_api_key: str = ""
-    fast_base_url: str = "https://api.openai.com/v1"
+    fast_base_url: str = "https://subrouter.ai/v1"
     fast_model: str = "gpt-4.1-mini"
     fast_request_timeout_s: float = 30.0
     smart_provider: str = "template"
     smart_api_key: str = ""
-    smart_base_url: str = "https://api.openai.com/v1"
+    smart_base_url: str = "https://subrouter.ai/v1"
     smart_model: str = "gpt-4.1"
     smart_request_timeout_s: float = 30.0
     starter_stream_enabled: bool = True
@@ -60,10 +60,10 @@ class GenerationSettings:
         )
         base_url = (
             _first_non_empty(
-                os.getenv("INTERVIEW_TRAINER_LLM_BASE_URL", ""),
-                os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                os.getenv("INTERVIEW_TRAINER_LLM_BASE_URL", "https://subrouter.ai/v1"),
+                os.getenv("OPENAI_BASE_URL", "https://subrouter.ai/v1"),
             )
-            or "https://api.openai.com/v1"
+            or "https://subrouter.ai/v1"
         ).rstrip("/")
         request_timeout_s = float(os.getenv("INTERVIEW_TRAINER_REQUEST_TIMEOUT_S", "30"))
         return cls(
@@ -74,7 +74,7 @@ class GenerationSettings:
             fast_api_key=_first_non_empty(os.getenv("INTERVIEW_TRAINER_FAST_API_KEY", ""), api_key),
             fast_base_url=(
                 _first_non_empty(os.getenv("INTERVIEW_TRAINER_FAST_BASE_URL", ""), base_url)
-                or "https://api.openai.com/v1"
+                or "https://subrouter.ai/v1"
             ).rstrip("/"),
             fast_model=os.getenv("INTERVIEW_TRAINER_FAST_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini",
             fast_request_timeout_s=float(
@@ -84,7 +84,7 @@ class GenerationSettings:
             smart_api_key=_first_non_empty(os.getenv("INTERVIEW_TRAINER_SMART_API_KEY", ""), api_key),
             smart_base_url=(
                 _first_non_empty(os.getenv("INTERVIEW_TRAINER_SMART_BASE_URL", ""), base_url)
-                or "https://api.openai.com/v1"
+                or "https://subrouter.ai/v1"
             ).rstrip("/"),
             smart_model=os.getenv("INTERVIEW_TRAINER_SMART_MODEL", "gpt-4.1").strip() or "gpt-4.1",
             smart_request_timeout_s=float(
@@ -131,7 +131,7 @@ class GenerationSettings:
 class TranscriptionSettings:
     provider: str = "template"
     openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
+    openai_base_url: str = "https://subrouter.ai/v1"
     alibaba_api_key: str = ""
     alibaba_ws_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
     alibaba_app_key: str = ""
@@ -166,10 +166,15 @@ class TranscriptionSettings:
 
     @classmethod
     def from_env(cls) -> "TranscriptionSettings":
+        provider = os.getenv("INTERVIEW_TRAINER_ASR_PROVIDER", "template").strip().lower() or "template"
+        bridge_target_raw = os.getenv("INTERVIEW_TRAINER_BRIDGE_TARGET_MS", "").strip()
+        bridge_max_buffer_raw = os.getenv("INTERVIEW_TRAINER_BRIDGE_MAX_BUFFER_MS", "").strip()
+        default_bridge_target_ms = 3000.0 if provider == "alibaba_realtime" else 450.0
+        default_bridge_max_buffer_ms = 5000.0 if provider == "alibaba_realtime" else 1200.0
         return cls(
-            provider=os.getenv("INTERVIEW_TRAINER_ASR_PROVIDER", "template").strip().lower() or "template",
+            provider=provider,
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-            openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            openai_base_url=os.getenv("OPENAI_BASE_URL", "https://subrouter.ai/v1").rstrip("/"),
             alibaba_api_key=_first_non_empty(
                 os.getenv("INTERVIEW_TRAINER_ALIBABA_API_KEY", ""),
                 os.getenv("DASHSCOPE_API_KEY", ""),
@@ -206,8 +211,8 @@ class TranscriptionSettings:
             adaptive_multiplier=float(os.getenv("INTERVIEW_TRAINER_ASR_ADAPTIVE_MULTIPLIER", "2.5")),
             adaptive_floor_ratio=float(os.getenv("INTERVIEW_TRAINER_ASR_ADAPTIVE_FLOOR_RATIO", "0.5")),
             noise_floor_alpha=float(os.getenv("INTERVIEW_TRAINER_ASR_NOISE_ALPHA", "0.18")),
-            bridge_target_duration_ms=float(os.getenv("INTERVIEW_TRAINER_BRIDGE_TARGET_MS", "450")),
-            bridge_max_buffer_ms=float(os.getenv("INTERVIEW_TRAINER_BRIDGE_MAX_BUFFER_MS", "1200")),
+            bridge_target_duration_ms=float(bridge_target_raw or default_bridge_target_ms),
+            bridge_max_buffer_ms=float(bridge_max_buffer_raw or default_bridge_max_buffer_ms),
             vad_frame_ms=int(os.getenv("INTERVIEW_TRAINER_VAD_FRAME_MS", "30")),
             vad_min_voiced_ratio=float(os.getenv("INTERVIEW_TRAINER_VAD_MIN_RATIO", "0.25")),
             vad_min_speech_frames=int(os.getenv("INTERVIEW_TRAINER_VAD_MIN_FRAMES", "2")),

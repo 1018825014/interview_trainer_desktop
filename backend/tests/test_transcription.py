@@ -1,13 +1,16 @@
 import base64
+import io
 import json
 import time
 import unittest
+import wave
 from unittest import mock
 
 from interview_trainer.audio import AudioSessionManager
 from interview_trainer.config import GenerationSettings, TranscriptionSettings
 from interview_trainer.service import InterviewTrainerService
 from interview_trainer.transcription import (
+    AlibabaRealtimeChunkTranscriptionProvider,
     AudioTranscriptionService,
     OpenAITranscriptionProvider,
     ProviderTranscript,
@@ -25,6 +28,16 @@ def _speech_pcm(*, amplitude: int = 1200, samples: int = 4000, switch_every: int
         sample = amplitude * sign
         payload.extend(int(sample).to_bytes(2, byteorder="little", signed=True))
     return bytes(payload)
+
+
+def _wav_bytes_from_pcm(pcm: bytes, *, sample_rate: int = 16000) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(sample_rate)
+        handle.writeframes(pcm)
+    return buffer.getvalue()
 
 
 class _StaticProvider:
@@ -124,6 +137,78 @@ class _ImmediateRealtimeStream:
 class _AlibabaImmediateRealtimeStream(_ImmediateRealtimeStream):
     provider_name = "alibaba_realtime"
     model_name = "fun-asr-realtime-2026-02-28"
+
+
+class _SequencedAlibabaRealtimeStream:
+    provider_name = "alibaba_realtime"
+    model_name = "fun-asr-realtime-2026-02-28"
+
+    def __init__(self, source: AudioSource) -> None:
+        self.source = source
+        self.started = False
+        self.closed = False
+        self.enqueued_segments: list[dict[str, float | int]] = []
+        self.events: list[RealtimeTranscriptEvent] = []
+
+    def start(self) -> None:
+        self.started = True
+
+    def enqueue_chunk(
+        self,
+        *,
+        pcm: bytes,
+        sample_rate: int,
+        channels: int,
+        sample_width_bytes: int,
+        metadata: RealtimeChunkMetadata,
+    ) -> None:
+        del channels, sample_width_bytes
+        self.enqueued_segments.append(
+            {
+                "num_bytes": len(pcm),
+                "sample_rate": sample_rate,
+                "duration_ms": metadata.duration_ms,
+                "ts_start": metadata.ts_start,
+                "ts_end": metadata.ts_end,
+            }
+        )
+        index = len(self.enqueued_segments)
+        self.events.append(
+            RealtimeTranscriptEvent(
+                provider=self.provider_name,
+                model=self.model_name,
+                metadata=metadata,
+                text=f"segment-{index}",
+                confidence=0.8 + (index * 0.01),
+                language=metadata.language or "zh",
+                notes=["fake segmented realtime stream"],
+                response_ms=25.0,
+            )
+        )
+
+    def poll_partials(self, *, limit: int = 8) -> list[RealtimeTranscriptDeltaEvent]:
+        del limit
+        return []
+
+    def poll_completed(self, *, limit: int = 8) -> list[RealtimeTranscriptEvent]:
+        ready = self.events[:limit]
+        self.events = self.events[limit:]
+        return ready
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _DelayedSequencedAlibabaRealtimeStream(_SequencedAlibabaRealtimeStream):
+    def __init__(self, source: AudioSource, *, empty_polls_before_ready: int = 0) -> None:
+        super().__init__(source)
+        self.empty_polls_before_ready = empty_polls_before_ready
+
+    def poll_completed(self, *, limit: int = 8) -> list[RealtimeTranscriptEvent]:
+        if self.empty_polls_before_ready > 0:
+            self.empty_polls_before_ready -= 1
+            return []
+        return super().poll_completed(limit=limit)
 
 
 class _FakeResponse:
@@ -612,13 +697,82 @@ class AudioTranscriptionServiceTests(unittest.TestCase):
         self.assertTrue(created_streams["system"].closed)
         self.assertTrue(created_streams["mic"].closed)
 
+    def test_live_bridge_falls_back_to_alibaba_chunk_provider_when_realtime_stream_fails(self) -> None:
+        audio_sessions = AudioSessionManager()
+        audio_session = audio_sessions.create_session({"transport": "manual", "sample_rate": 16000, "chunk_ms": 200})
+        audio_session_id = audio_session["session_id"]
+        audio_sessions.start_session(audio_session_id)
+
+        interview_service = InterviewTrainerService(settings=GenerationSettings(provider="template"))
+        interview_session = interview_service.create_session(
+            {
+                "knowledge": {
+                    "projects": [
+                        {
+                            "name": "AgentOps Console",
+                            "documents": [{"content": "Agent workflow builder with tracing and evaluation."}],
+                            "code_files": [{"path": "src/workflow.py", "content": "def run():\n    return True\n"}],
+                        }
+                    ]
+                },
+                "briefing": {
+                    "company": "Test AI",
+                    "business_context": "Agent tooling",
+                    "job_description": "Need agent system design and latency tradeoffs.",
+                },
+            }
+        )
+
+        factory_calls: list[str] = []
+
+        def realtime_factory(settings, source, language, prompt):
+            del settings, language, prompt
+            factory_calls.append(source.value)
+            if len(factory_calls) == 1:
+                raise RuntimeError("Alibaba realtime connection failed: timed out")
+            return _AlibabaImmediateRealtimeStream(source)
+
+        transcriber = AudioTranscriptionService(
+            audio_sessions,
+            interview_service=interview_service,
+            settings=TranscriptionSettings(provider="alibaba_realtime", alibaba_api_key="test-key"),
+            realtime_stream_factory=realtime_factory,
+        )
+        bridge = transcriber.create_live_bridge(
+            {
+                "audio_session_id": audio_session_id,
+                "session_id": interview_session["session_id"],
+                "sources": ["mic"],
+                "poll_interval_ms": 80,
+                "max_frames_per_chunk": 2,
+                "auto_start": True,
+            }
+        )
+
+        audio_sessions.push_frame(
+            audio_session_id,
+            {
+                "source": "mic",
+                "pcm_base64": base64.b64encode(_speech_pcm(amplitude=1800, samples=3200, switch_every=10)).decode("ascii"),
+                "ts": 13.0,
+            },
+        )
+        time.sleep(0.35)
+        stopped = transcriber.stop_live_bridge(bridge["bridge_id"])
+
+        self.assertEqual(stopped["status"], "stopped")
+        self.assertEqual(stopped["active_asr_mode"], "chunk")
+        self.assertIn("timed out", stopped["realtime_fallback_reason"])
+        self.assertGreaterEqual(stopped["transcripts_processed"], 1)
+        self.assertIn("alibaba_realtime", {item["provider"] for item in stopped["recent_transcripts"]})
+
 
 class OpenAITranscriptionProviderTests(unittest.TestCase):
     def test_provider_posts_multipart_audio_to_openai_endpoint(self) -> None:
         settings = TranscriptionSettings(
             provider="openai",
             openai_api_key="test-key",
-            openai_base_url="https://api.openai.com/v1",
+            openai_base_url="https://subrouter.ai/v1",
             model="gpt-4o-mini-transcribe",
             language="en",
         )
@@ -646,7 +800,7 @@ class OpenAITranscriptionProviderTests(unittest.TestCase):
 
         self.assertEqual(result.text, "hello world")
         self.assertEqual(result.language, "en")
-        self.assertEqual(captured_request["url"], "https://api.openai.com/v1/audio/transcriptions")
+        self.assertEqual(captured_request["url"], "https://subrouter.ai/v1/audio/transcriptions")
         self.assertEqual(captured_request["method"], "POST")
         self.assertIn("multipart/form-data", captured_request["content_type"])
         self.assertEqual(captured_request["authorization"], "Bearer test-key")
@@ -658,6 +812,82 @@ class OpenAITranscriptionProviderTests(unittest.TestCase):
 
 
 class RealtimeStreamFactoryTests(unittest.TestCase):
+    def test_alibaba_chunk_provider_splits_long_audio_into_multiple_realtime_tasks(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+            bridge_target_duration_ms=3000.0,
+        )
+        created_streams: list[_SequencedAlibabaRealtimeStream] = []
+
+        def realtime_factory(
+            settings: TranscriptionSettings,
+            source: AudioSource,
+            language: str,
+            prompt: str,
+        ) -> _SequencedAlibabaRealtimeStream:
+            del settings, language, prompt
+            stream = _SequencedAlibabaRealtimeStream(source)
+            created_streams.append(stream)
+            return stream
+
+        provider = AlibabaRealtimeChunkTranscriptionProvider(settings, realtime_factory)
+        wav_bytes = _wav_bytes_from_pcm(_speech_pcm(samples=16000 * 10), sample_rate=16000)
+
+        result = provider.transcribe(
+            wav_bytes=wav_bytes,
+            source=AudioSource.SYSTEM,
+            language="zh",
+            prompt="",
+            text_override="",
+        )
+
+        self.assertEqual(result.text, "segment-1 segment-2 segment-3 segment-4")
+        self.assertAlmostEqual(result.confidence, 0.825, places=3)
+        self.assertEqual(len(created_streams), 1)
+        stream = created_streams[0]
+        self.assertTrue(stream.started)
+        self.assertTrue(stream.closed)
+        self.assertEqual(len(stream.enqueued_segments), 4)
+        self.assertEqual([round(item["duration_ms"], 1) for item in stream.enqueued_segments], [3000.0, 3000.0, 3000.0, 1000.0])
+
+    def test_alibaba_chunk_provider_waits_longer_for_multi_second_segments(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+            bridge_target_duration_ms=3000.0,
+            realtime_drain_timeout_s=0.2,
+        )
+        created_streams: list[_DelayedSequencedAlibabaRealtimeStream] = []
+
+        def realtime_factory(
+            settings: TranscriptionSettings,
+            source: AudioSource,
+            language: str,
+            prompt: str,
+        ) -> _DelayedSequencedAlibabaRealtimeStream:
+            del settings, language, prompt
+            stream = _DelayedSequencedAlibabaRealtimeStream(source, empty_polls_before_ready=28)
+            created_streams.append(stream)
+            return stream
+
+        provider = AlibabaRealtimeChunkTranscriptionProvider(settings, realtime_factory)
+        wav_bytes = _wav_bytes_from_pcm(_speech_pcm(samples=16000 * 3), sample_rate=16000)
+
+        result = provider.transcribe(
+            wav_bytes=wav_bytes,
+            source=AudioSource.SYSTEM,
+            language="zh",
+            prompt="",
+            text_override="",
+        )
+
+        self.assertEqual(result.text, "segment-1")
+        self.assertEqual(len(created_streams), 1)
+        self.assertTrue(created_streams[0].closed)
+
     def test_default_realtime_stream_factory_returns_alibaba_stream_for_alibaba_provider(self) -> None:
         settings = TranscriptionSettings(
             provider="alibaba_realtime",
@@ -788,6 +1018,87 @@ class RealtimeStreamFactoryTests(unittest.TestCase):
         self.assertFalse(stream._pending_by_task_id)
         self.assertFalse(stream._started_task_ids)
         self.assertFalse(stream.poll_completed(limit=4))
+
+    def test_alibaba_realtime_stream_skips_idle_socket_polls_when_no_tasks_are_active(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+        )
+        stream = AudioTranscriptionService._default_realtime_stream_factory(
+            settings,
+            AudioSource.SYSTEM,
+            "zh",
+            "",
+        )
+
+        stream._socket = object()
+        stream._drain_socket = lambda **kwargs: (_ for _ in ()).throw(AssertionError("idle poll should not drain"))
+
+        self.assertEqual(stream.poll_partials(limit=4), [])
+        self.assertEqual(stream.poll_completed(limit=4), [])
+
+    def test_alibaba_realtime_stream_reconnects_when_enqueue_hits_closed_socket(self) -> None:
+        settings = TranscriptionSettings(
+            provider="alibaba_realtime",
+            alibaba_api_key="test-key",
+            model="fun-asr-realtime-2026-02-28",
+        )
+        stream = AudioTranscriptionService._default_realtime_stream_factory(
+            settings,
+            AudioSource.SYSTEM,
+            "zh",
+            "",
+        )
+        metadata = RealtimeChunkMetadata(
+            source=AudioSource.SYSTEM,
+            speaker=Speaker.INTERVIEWER,
+            final=True,
+            ts_start=0.0,
+            ts_end=1.0,
+            duration_ms=1000.0,
+            num_frames=4,
+            language="zh",
+            prompt="",
+            session_snapshot={},
+            signal={},
+            interview_session_id="session-1",
+            auto_tick_offset_s=1.0,
+            turn_id="turn-1",
+        )
+
+        start_calls = 0
+        sent_actions: list[str] = []
+
+        def fake_start() -> None:
+            nonlocal start_calls
+            start_calls += 1
+            stream._socket = object()
+
+        def fake_send_json(payload) -> None:
+            sent_actions.append(str((payload.get("header") or {}).get("action") or ""))
+            if sent_actions == ["run-task"]:
+                raise RuntimeError("socket is already closed")
+            if (payload.get("header") or {}).get("action") == "run-task":
+                stream._started_task_ids.add(str((payload.get("header") or {}).get("task_id") or ""))
+
+        stream.start = fake_start
+        stream.close = lambda: setattr(stream, "_socket", None)
+        stream._send_json = fake_send_json
+        stream._send_binary = lambda payload: None
+        stream._drain_socket = lambda **kwargs: None
+
+        stream.enqueue_chunk(
+            pcm=_speech_pcm(samples=3200),
+            sample_rate=16000,
+            channels=1,
+            sample_width_bytes=2,
+            metadata=metadata,
+        )
+
+        self.assertGreaterEqual(start_calls, 2)
+        self.assertGreaterEqual(sent_actions.count("run-task"), 2)
+        self.assertIn("finish-task", sent_actions)
 
 
 if __name__ == "__main__":

@@ -472,43 +472,52 @@ class AlibabaRealtimeTranscriptionStream:
         sample_width_bytes: int,
         metadata: RealtimeChunkMetadata,
     ) -> None:
-        self.start()
-        task_id = str(uuid4())
         prepared_pcm, target_rate = self._prepare_audio_payload(
             pcm,
             sample_rate=sample_rate,
             channels=channels,
             sample_width_bytes=sample_width_bytes,
         )
-        self._pending_by_task_id[task_id] = metadata
-        self._send_json(self._build_run_task_payload(task_id=task_id, sample_rate=target_rate))
-        self._wait_for_task_started(task_id)
-        self._send_binary(prepared_pcm)
-        self._send_json(
-            {
-                "header": {
-                    "action": "finish-task",
-                    "task_id": task_id,
-                    "streaming": "duplex",
-                },
-                "payload": {
-                    "input": {},
-                },
-            }
-        )
-        self._drain_socket(max_events=6, max_wait_s=0.05)
+        for attempt in range(2):
+            self.start()
+            task_id = str(uuid4())
+            self._pending_by_task_id[task_id] = metadata
+            try:
+                self._send_json(self._build_run_task_payload(task_id=task_id, sample_rate=target_rate))
+                self._wait_for_task_started(task_id)
+                self._send_binary(prepared_pcm)
+                self._send_json(
+                    {
+                        "header": {
+                            "action": "finish-task",
+                            "task_id": task_id,
+                            "streaming": "duplex",
+                        },
+                        "payload": {
+                            "input": {},
+                        },
+                    }
+                )
+                self._drain_socket(max_events=6, max_wait_s=0.05)
+                return
+            except Exception as exc:
+                self._started_task_ids.discard(task_id)
+                self._pending_by_task_id.pop(task_id, None)
+                self._partial_text_by_task_id.pop(task_id, None)
+                if attempt == 0 and self._can_reconnect_after_error(exc):
+                    self.close()
+                    continue
+                raise
 
     def poll_completed(self, *, limit: int = 8) -> list[RealtimeTranscriptEvent]:
-        self.start()
-        self._drain_socket(max_events=max(8, limit * 4), max_wait_s=0.05)
+        self._poll_socket_if_active(limit=limit)
         results: list[RealtimeTranscriptEvent] = []
         while self._completed and len(results) < limit:
             results.append(self._completed.popleft())
         return results
 
     def poll_partials(self, *, limit: int = 8) -> list[RealtimeTranscriptDeltaEvent]:
-        self.start()
-        self._drain_socket(max_events=max(8, limit * 4), max_wait_s=0.05)
+        self._poll_socket_if_active(limit=limit)
         results: list[RealtimeTranscriptDeltaEvent] = []
         while self._partials and len(results) < limit:
             results.append(self._partials.popleft())
@@ -541,6 +550,39 @@ class AlibabaRealtimeTranscriptionStream:
             target_rate=target_rate,
         )
         return prepared_pcm, target_rate
+
+    def _poll_socket_if_active(self, *, limit: int) -> None:
+        if not self._has_active_tasks():
+            return
+        if self._socket is None:
+            raise RuntimeError("Alibaba realtime socket closed while tasks were still pending.")
+        try:
+            self._drain_socket(max_events=max(8, limit * 4), max_wait_s=0.05)
+        except Exception as exc:
+            if self._can_reconnect_after_error(exc) and not self._has_active_tasks():
+                self.close()
+                return
+            raise
+
+    def _has_active_tasks(self) -> bool:
+        return bool(self._pending_by_task_id or self._started_task_ids)
+
+    @staticmethod
+    def _looks_like_closed_socket_error(exc: Exception) -> bool:
+        text = str(exc).strip().lower()
+        return any(
+            marker in text
+            for marker in (
+                "socket is already closed",
+                "connection to remote host was lost",
+                "broken pipe",
+                "connection is already closed",
+                "socket is not connected",
+            )
+        )
+
+    def _can_reconnect_after_error(self, exc: Exception) -> bool:
+        return self._looks_like_closed_socket_error(exc) and not self._has_active_tasks()
 
     def _build_run_task_payload(self, *, task_id: str, sample_rate: int) -> dict[str, Any]:
         parameters: dict[str, Any] = {

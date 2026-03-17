@@ -16,7 +16,7 @@ class GenerationSettingsTests(unittest.TestCase):
             "OPENAI_API_KEY": "shared-key",
             "OPENAI_BASE_URL": "https://shared.example/v1",
         }
-        with mock.patch.dict(os.environ, env, clear=False):
+        with mock.patch.dict(os.environ, env, clear=True):
             settings = GenerationSettings.from_env()
 
         self.assertEqual(settings.provider, "openai")
@@ -36,7 +36,7 @@ class GenerationSettingsTests(unittest.TestCase):
                 "OPENAI_API_KEY": "shared-key",
                 "OPENAI_BASE_URL": "https://shared.example/v1",
             },
-            clear=False,
+            clear=True,
         ):
             settings = GenerationSettings.from_env()
 
@@ -57,7 +57,7 @@ class GenerationSettingsTests(unittest.TestCase):
             "INTERVIEW_TRAINER_SMART_TIMEOUT_S": "45",
             "INTERVIEW_TRAINER_SMART_MODEL": "smart-model",
         }
-        with mock.patch.dict(os.environ, env, clear=False):
+        with mock.patch.dict(os.environ, env, clear=True):
             settings = GenerationSettings.from_env()
 
         self.assertEqual(settings.fast_provider, "template")
@@ -83,7 +83,7 @@ class TranscriptionSettingsTests(unittest.TestCase):
             "INTERVIEW_TRAINER_ALIBABA_VOCABULARY_ID": "vocab-agent-terms",
             "INTERVIEW_TRAINER_ALIBABA_HOTWORDS": "RAG,MCP,embedding,reranker,tool calling",
         }
-        with mock.patch.dict(os.environ, env, clear=False):
+        with mock.patch.dict(os.environ, env, clear=True):
             settings = TranscriptionSettings.from_env()
 
         self.assertEqual(settings.provider, "alibaba_realtime")
@@ -99,6 +99,30 @@ class TranscriptionSettingsTests(unittest.TestCase):
         )
         self.assertTrue(settings.use_alibaba_realtime)
         self.assertTrue(settings.use_realtime_stream)
+
+    def test_alibaba_realtime_uses_longer_bridge_defaults_when_not_overridden(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_ASR_PROVIDER": "alibaba_realtime",
+            "INTERVIEW_TRAINER_ALIBABA_API_KEY": "dash-key",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            settings = TranscriptionSettings.from_env()
+
+        self.assertEqual(settings.bridge_target_duration_ms, 3000.0)
+        self.assertEqual(settings.bridge_max_buffer_ms, 5000.0)
+
+    def test_alibaba_realtime_bridge_env_overrides_are_respected(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_ASR_PROVIDER": "alibaba_realtime",
+            "INTERVIEW_TRAINER_ALIBABA_API_KEY": "dash-key",
+            "INTERVIEW_TRAINER_BRIDGE_TARGET_MS": "900",
+            "INTERVIEW_TRAINER_BRIDGE_MAX_BUFFER_MS": "1800",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            settings = TranscriptionSettings.from_env()
+
+        self.assertEqual(settings.bridge_target_duration_ms, 900.0)
+        self.assertEqual(settings.bridge_max_buffer_ms, 1800.0)
 
 
 if __name__ == "__main__":
