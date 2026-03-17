@@ -39,6 +39,18 @@ def _dedupe(items: list[str]) -> list[str]:
     return deduped
 
 
+def _dedupe_by_key(items: list[Any], key_fn: Any) -> list[Any]:
+    deduped: list[Any] = []
+    seen: set[str] = set()
+    for item in items:
+        key = _clean_text(key_fn(item))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
 def _project_payloads(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         item
@@ -67,14 +79,27 @@ class LibraryCompiler:
 
         for project_pack, project_payload in zip(compiled_knowledge.projects, _project_payloads(payload)):
             project_modules = self._build_module_cards(project_pack, project_payload)
-            project_evidence = self._build_evidence_cards(project_pack, project_payload)
-            project_metrics = self._build_metric_evidence(project_pack, project_payload)
+            project_evidence = _dedupe_by_key(
+                self._build_manual_evidence_cards(project_pack, project_payload)
+                + self._build_evidence_cards(project_pack, project_payload),
+                lambda item: item.evidence_id,
+            )
+            project_metrics = _dedupe_by_key(
+                self._build_manual_metric_evidence(project_pack, project_payload)
+                + self._build_metric_evidence(project_pack, project_payload),
+                lambda item: item.evidence_id,
+            )
             project_units = self._build_retrieval_units(
                 project_pack,
                 project_payload,
                 project_modules,
                 project_evidence,
                 project_metrics,
+            )
+            project_units = _dedupe_by_key(
+                self._build_manual_retrieval_units(project_pack, project_payload)
+                + project_units,
+                lambda item: item.unit_id,
             )
             module_cards.extend(project_modules)
             evidence_cards.extend(project_evidence)
@@ -143,6 +168,34 @@ class LibraryCompiler:
             )
         return module_cards
 
+    def _build_manual_evidence_cards(
+        self,
+        project_pack: ProjectInterviewPack,
+        project_payload: dict[str, Any],
+    ) -> list[EvidenceCard]:
+        evidence_cards: list[EvidenceCard] = []
+        for index, item in enumerate(project_payload.get("manual_evidence", []), start=1):
+            if not isinstance(item, dict):
+                continue
+            title = _clean_text(item.get("title"))
+            summary = _clean_text(item.get("summary"))
+            if not title and not summary:
+                continue
+            evidence_cards.append(
+                EvidenceCard(
+                    evidence_id=_clean_text(item.get("evidence_id")) or f"{project_pack.project_id}-manual-evidence-{index}",
+                    project_id=project_pack.project_id,
+                    module_id=_clean_text(item.get("module_id")) or None,
+                    evidence_type=_clean_text(item.get("evidence_type")) or "manual_note",
+                    title=title or f"Evidence {index}",
+                    summary=summary,
+                    source_kind=_clean_text(item.get("source_kind")) or "manual_note",
+                    source_ref=_clean_text(item.get("source_ref")) or "workspace note",
+                    confidence=_clean_text(item.get("confidence")) or "medium",
+                )
+            )
+        return evidence_cards
+
     def _build_evidence_cards(
         self,
         project_pack: ProjectInterviewPack,
@@ -185,8 +238,37 @@ class LibraryCompiler:
                     source_ref=chunk.path,
                     confidence="medium",
                 )
-            )
+                )
         return evidence_cards
+
+    def _build_manual_metric_evidence(
+        self,
+        project_pack: ProjectInterviewPack,
+        project_payload: dict[str, Any],
+    ) -> list[MetricEvidence]:
+        metric_evidence: list[MetricEvidence] = []
+        for index, item in enumerate(project_payload.get("manual_metrics", []), start=1):
+            if not isinstance(item, dict):
+                continue
+            metric_name = _clean_text(item.get("metric_name"))
+            metric_value = _clean_text(item.get("metric_value"))
+            if not metric_name and not metric_value:
+                continue
+            metric_evidence.append(
+                MetricEvidence(
+                    evidence_id=_clean_text(item.get("evidence_id")) or f"{project_pack.project_id}-manual-metric-{index}",
+                    project_id=project_pack.project_id,
+                    module_id=_clean_text(item.get("module_id")) or None,
+                    metric_name=metric_name or "metric",
+                    metric_value=metric_value,
+                    baseline=_clean_text(item.get("baseline")),
+                    method=_clean_text(item.get("method")) or "manual note",
+                    environment=_clean_text(item.get("environment")) or "workspace",
+                    source_note=_clean_text(item.get("source_note")) or "manual metric",
+                    confidence=_clean_text(item.get("confidence")) or "medium",
+                )
+            )
+        return metric_evidence
 
     def _build_metric_evidence(
         self,
@@ -357,6 +439,36 @@ class LibraryCompiler:
                     supporting_refs=supporting_refs[:2],
                     hooks=hooks,
                     safe_claims=_dedupe([module.responsibility] + module.key_call_paths[:2]),
+                )
+            )
+        return units
+
+    def _build_manual_retrieval_units(
+        self,
+        project_pack: ProjectInterviewPack,
+        project_payload: dict[str, Any],
+    ) -> list[RetrievalUnit]:
+        units: list[RetrievalUnit] = []
+        for index, item in enumerate(project_payload.get("manual_retrieval_units", []), start=1):
+            if not isinstance(item, dict):
+                continue
+            short_answer = _clean_text(item.get("short_answer"))
+            long_answer = _clean_text(item.get("long_answer"))
+            if not short_answer and not long_answer:
+                continue
+            units.append(
+                RetrievalUnit(
+                    unit_id=_clean_text(item.get("unit_id")) or f"{project_pack.project_id}-manual-ru-{index}",
+                    unit_type=_clean_text(item.get("unit_type")) or "project_intro",
+                    project_id=project_pack.project_id,
+                    module_id=_clean_text(item.get("module_id")) or None,
+                    question_forms=_dedupe([_clean_text(value) for value in item.get("question_forms", [])]),
+                    short_answer=short_answer,
+                    long_answer=long_answer,
+                    key_points=_dedupe([_clean_text(value) for value in item.get("key_points", [])]),
+                    supporting_refs=_dedupe([_clean_text(value) for value in item.get("supporting_refs", [])]),
+                    hooks=_dedupe([_clean_text(value) for value in item.get("hooks", [])]),
+                    safe_claims=_dedupe([_clean_text(value) for value in item.get("safe_claims", [])]),
                 )
             )
         return units

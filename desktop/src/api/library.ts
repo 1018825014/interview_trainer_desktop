@@ -6,6 +6,9 @@ import type {
   LibraryDocumentRecord,
   LibraryImportSummary,
   LibraryKnowledgeRecord,
+  LibraryManualEvidenceRecord,
+  LibraryManualMetricRecord,
+  LibraryManualRetrievalUnitRecord,
   LibraryOverlayRecord,
   LibraryPresetRecord,
   LibraryProfileRecord,
@@ -76,6 +79,48 @@ function mapCodeFile(raw: any): LibraryCodeFileRecord {
   };
 }
 
+function mapManualEvidence(raw: any): LibraryManualEvidenceRecord {
+  return {
+    evidenceId: asString(raw?.evidence_id),
+    moduleId: asString(raw?.module_id),
+    evidenceType: asString(raw?.evidence_type, "manual_note"),
+    title: asString(raw?.title, "Evidence"),
+    summary: asString(raw?.summary),
+    sourceKind: asString(raw?.source_kind, "manual_note"),
+    sourceRef: asString(raw?.source_ref),
+    confidence: asString(raw?.confidence, "medium"),
+  };
+}
+
+function mapManualMetric(raw: any): LibraryManualMetricRecord {
+  return {
+    evidenceId: asString(raw?.evidence_id),
+    moduleId: asString(raw?.module_id),
+    metricName: asString(raw?.metric_name),
+    metricValue: asString(raw?.metric_value),
+    baseline: asString(raw?.baseline),
+    method: asString(raw?.method, "manual note"),
+    environment: asString(raw?.environment, "workspace"),
+    sourceNote: asString(raw?.source_note),
+    confidence: asString(raw?.confidence, "medium"),
+  };
+}
+
+function mapManualRetrievalUnit(raw: any): LibraryManualRetrievalUnitRecord {
+  return {
+    unitId: asString(raw?.unit_id),
+    unitType: asString(raw?.unit_type, "project_intro"),
+    moduleId: asString(raw?.module_id),
+    questionForms: asStringArray(raw?.question_forms),
+    shortAnswer: asString(raw?.short_answer),
+    longAnswer: asString(raw?.long_answer),
+    keyPoints: asStringArray(raw?.key_points),
+    supportingRefs: asStringArray(raw?.supporting_refs),
+    hooks: asStringArray(raw?.hooks),
+    safeClaims: asStringArray(raw?.safe_claims),
+  };
+}
+
 function mapRepoSummary(raw: any): LibraryRepoSummaryRecord {
   return {
     repoId: asString(raw?.repo_id),
@@ -102,6 +147,11 @@ function mapProject(raw: any): LibraryProjectRecord {
     limitations: asStringArray(raw?.limitations),
     upgradePlan: asStringArray(raw?.upgrade_plan),
     interviewerHooks: asStringArray(raw?.interviewer_hooks),
+    manualEvidence: Array.isArray(raw?.manual_evidence) ? raw.manual_evidence.map(mapManualEvidence) : [],
+    manualMetrics: Array.isArray(raw?.manual_metrics) ? raw.manual_metrics.map(mapManualMetric) : [],
+    manualRetrievalUnits: Array.isArray(raw?.manual_retrieval_units)
+      ? raw.manual_retrieval_units.map(mapManualRetrievalUnit)
+      : [],
     repoSummaries: Array.isArray(raw?.repo_summaries) ? raw.repo_summaries.map(mapRepoSummary) : [],
     documents: Array.isArray(raw?.documents) ? raw.documents.map(mapDocument) : [],
     codeFiles: Array.isArray(raw?.code_files) ? raw.code_files.map(mapCodeFile) : [],

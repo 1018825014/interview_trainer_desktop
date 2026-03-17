@@ -326,11 +326,35 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `46/46` passing
+- Stage 9 implemented:
+  - added persistent project-level authoring fields for:
+    - `manual_evidence`
+    - `manual_metrics`
+    - `manual_retrieval_units`
+  - project CRUD now round-trips those fields through the library API and workspace serializer
+  - `LibrarySessionBuilder` now carries authored materials into selected project payloads
+  - `LibraryCompiler` now merges authored materials with auto-generated compile artifacts:
+    - manual evidence cards are prepended and deduped by `evidence_id`
+    - manual metric evidence is prepended and deduped by `evidence_id`
+    - manual retrieval units are prepended and deduped by `unit_id`
+  - desktop `ProjectEditor` now has dedicated authoring surfaces for:
+    - manual evidence cards
+    - manual metric evidence
+    - manual retrieval units
+  - frontend project serialization and mock workspace data were updated to carry the new authored-material shapes end-to-end
+- Stage 9 verification:
+  - targeted backend tests:
+    - `test_library_compile.py`
+    - `test_library_api.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `48/48` passing
 - Recommended next implementation order:
-  1. richer indexing and evidence authoring surfaces
-  2. bundle history / compare / reuse UX polish
-  3. deeper retrieval ranking and hook control tuning
-  4. direct document-asset persistence actions in the desktop editor
+  1. bundle history / compare / reuse UX polish
+  2. deeper retrieval ranking and hook control tuning
+  3. direct document-asset persistence actions in the desktop editor
+  4. compiled artifact preview APIs for module / evidence / retrieval-unit inspection
 
 ## Best next debugging tasks
 

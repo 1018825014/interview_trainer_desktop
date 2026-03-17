@@ -162,6 +162,55 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(deleted["status"], "deleted")
         self.assertEqual(listing_after_delete["documents"], [])
 
+    def test_library_project_roundtrip_preserves_manual_authoring_materials(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            created = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "manual_evidence": [
+                        {
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 interview-style queries locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_metrics": [
+                        {
+                            "metric_name": "first_token_latency",
+                            "metric_value": "850ms",
+                            "baseline": "1.7s",
+                            "method": "local benchmark",
+                            "environment": "sqlite + fast model",
+                            "source_note": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this architecture?"],
+                            "short_answer": "I optimized for debuggability first.",
+                            "long_answer": "I chose smaller components so I could reason about retrieval failures quickly.",
+                            "key_points": ["debuggability", "latency"],
+                            "supporting_refs": ["manual-evidence-1"],
+                            "hooks": ["The retrieval router was the hardest part."],
+                            "safe_claims": ["The architecture was chosen for debuggability."],
+                        }
+                    ],
+                },
+            ).json()
+            fetched = client.get(f"/api/library/projects/{created['project_id']}").json()
+
+        self.assertEqual(len(fetched["manual_evidence"]), 1)
+        self.assertEqual(fetched["manual_evidence"][0]["title"], "Load Test")
+        self.assertEqual(len(fetched["manual_metrics"]), 1)
+        self.assertEqual(fetched["manual_metrics"][0]["metric_name"], "first_token_latency")
+        self.assertEqual(len(fetched["manual_retrieval_units"]), 1)
+        self.assertEqual(fetched["manual_retrieval_units"][0]["unit_type"], "tradeoff_reasoning")
+
     def test_library_repo_reindex_refreshes_imported_assets_and_keeps_manual_docs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

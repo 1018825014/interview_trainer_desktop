@@ -153,6 +153,46 @@ export const sampleLibraryWorkspace: LibraryWorkspaceRecord = {
         limitations: ["复杂任务弹性不如多 agent。"],
         upgradePlan: ["继续做 hybrid retrieval 和 cached evidence ranking。"],
         interviewerHooks: ["这个系统真正难的是索引和检索时延，而不是生成本身。"],
+        manualEvidence: [
+          {
+            evidenceId: "sample-evidence-1",
+            moduleId: "",
+            evidenceType: "benchmark",
+            title: "Local Benchmark",
+            summary: "Benchmarked 100 interview-style prompts on the local retrieval path.",
+            sourceKind: "manual_note",
+            sourceRef: "benchmarks/local-latency.md",
+            confidence: "high",
+          },
+        ],
+        manualMetrics: [
+          {
+            evidenceId: "sample-metric-1",
+            moduleId: "",
+            metricName: "first_token_latency",
+            metricValue: "850ms",
+            baseline: "1.7s",
+            method: "local benchmark",
+            environment: "sqlite + fast model",
+            sourceNote: "benchmarks/local-latency.md",
+            confidence: "high",
+          },
+        ],
+        manualRetrievalUnits: [
+          {
+            unitId: "sample-ru-1",
+            unitType: "tradeoff_reasoning",
+            moduleId: "",
+            questionForms: ["Why did you choose this architecture?"],
+            shortAnswer: "I optimized for debuggability and bounded latency first.",
+            longAnswer:
+              "I split retrieval, orchestration, and fallback handling so production debugging stayed simple, then I expanded capability only after the fast path was stable.",
+            keyPoints: ["debuggability", "latency", "bounded rollout"],
+            supportingRefs: ["sample-evidence-1", "sample-metric-1"],
+            hooks: ["The retrieval router was the hardest piece to stabilize."],
+            safeClaims: ["The architecture was chosen for debuggability first."],
+          },
+        ],
         repoSummaries: [
           {
             repoId: "repo-agentops",
@@ -201,6 +241,9 @@ export const sampleLibraryWorkspace: LibraryWorkspaceRecord = {
         limitations: ["暂时还没有代码图可视化。"],
         upgradePlan: ["补模块关系图和更细粒度的 evidence ranking。"],
         interviewerHooks: ["普通 RAG 不够，这里真正关键的是回答控制层。"],
+        manualEvidence: [],
+        manualMetrics: [],
+        manualRetrievalUnits: [],
         repoSummaries: [],
         documents: [],
         codeFiles: [],

@@ -1,4 +1,11 @@
-import type { LibraryCodeFileRecord, LibraryDocumentRecord, LibraryProjectRecord } from "../../types/library";
+import type {
+  LibraryCodeFileRecord,
+  LibraryDocumentRecord,
+  LibraryManualEvidenceRecord,
+  LibraryManualMetricRecord,
+  LibraryManualRetrievalUnitRecord,
+  LibraryProjectRecord,
+} from "../../types/library";
 
 interface ProjectEditorProps {
   project: LibraryProjectRecord | null;
@@ -57,15 +64,117 @@ function updateCodeFile(project: LibraryProjectRecord, index: number, patch: Par
   };
 }
 
+function addManualEvidence(project: LibraryProjectRecord): LibraryProjectRecord {
+  const nextItem: LibraryManualEvidenceRecord = {
+    evidenceId: `manual-evidence-${Date.now()}`,
+    moduleId: "",
+    evidenceType: "manual_note",
+    title: "New Evidence",
+    summary: "",
+    sourceKind: "manual_note",
+    sourceRef: "",
+    confidence: "medium",
+  };
+  return { ...project, manualEvidence: [...project.manualEvidence, nextItem] };
+}
+
+function updateManualEvidence(
+  project: LibraryProjectRecord,
+  evidenceId: string,
+  patch: Partial<LibraryManualEvidenceRecord>,
+): LibraryProjectRecord {
+  return {
+    ...project,
+    manualEvidence: project.manualEvidence.map((item) => (item.evidenceId === evidenceId ? { ...item, ...patch } : item)),
+  };
+}
+
+function deleteManualEvidence(project: LibraryProjectRecord, evidenceId: string): LibraryProjectRecord {
+  return {
+    ...project,
+    manualEvidence: project.manualEvidence.filter((item) => item.evidenceId !== evidenceId),
+  };
+}
+
+function addManualMetric(project: LibraryProjectRecord): LibraryProjectRecord {
+  const nextItem: LibraryManualMetricRecord = {
+    evidenceId: `manual-metric-${Date.now()}`,
+    moduleId: "",
+    metricName: "metric_name",
+    metricValue: "",
+    baseline: "",
+    method: "manual note",
+    environment: "workspace",
+    sourceNote: "",
+    confidence: "medium",
+  };
+  return { ...project, manualMetrics: [...project.manualMetrics, nextItem] };
+}
+
+function updateManualMetric(
+  project: LibraryProjectRecord,
+  evidenceId: string,
+  patch: Partial<LibraryManualMetricRecord>,
+): LibraryProjectRecord {
+  return {
+    ...project,
+    manualMetrics: project.manualMetrics.map((item) => (item.evidenceId === evidenceId ? { ...item, ...patch } : item)),
+  };
+}
+
+function deleteManualMetric(project: LibraryProjectRecord, evidenceId: string): LibraryProjectRecord {
+  return {
+    ...project,
+    manualMetrics: project.manualMetrics.filter((item) => item.evidenceId !== evidenceId),
+  };
+}
+
+function addManualRetrievalUnit(project: LibraryProjectRecord): LibraryProjectRecord {
+  const nextItem: LibraryManualRetrievalUnitRecord = {
+    unitId: `manual-ru-${Date.now()}`,
+    unitType: "project_intro",
+    moduleId: "",
+    questionForms: [],
+    shortAnswer: "",
+    longAnswer: "",
+    keyPoints: [],
+    supportingRefs: [],
+    hooks: [],
+    safeClaims: [],
+  };
+  return {
+    ...project,
+    manualRetrievalUnits: [...project.manualRetrievalUnits, nextItem],
+  };
+}
+
+function updateManualRetrievalUnit(
+  project: LibraryProjectRecord,
+  unitId: string,
+  patch: Partial<LibraryManualRetrievalUnitRecord>,
+): LibraryProjectRecord {
+  return {
+    ...project,
+    manualRetrievalUnits: project.manualRetrievalUnits.map((item) => (item.unitId === unitId ? { ...item, ...patch } : item)),
+  };
+}
+
+function deleteManualRetrievalUnit(project: LibraryProjectRecord, unitId: string): LibraryProjectRecord {
+  return {
+    ...project,
+    manualRetrievalUnits: project.manualRetrievalUnits.filter((item) => item.unitId !== unitId),
+  };
+}
+
 export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEditorProps) {
   if (!project) {
     return (
       <section className="library-editor">
         <div className="panel-head">
-          <span>项目编辑</span>
-          <strong>未选择</strong>
+          <span>Project Editor</span>
+          <strong>None</strong>
         </div>
-        <p className="library-empty">从左侧选一个项目，或者先新建项目。</p>
+        <p className="library-empty">从左侧选择一个项目，或者先创建一个项目。</p>
       </section>
     );
   }
@@ -73,7 +182,7 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
   return (
     <section className="library-editor">
       <div className="panel-head">
-        <span>项目编辑</span>
+        <span>Project Editor</span>
         <strong>{project.name}</strong>
       </div>
 
@@ -83,12 +192,12 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
       </label>
 
       <label>
-        30 秒版本
+        30 秒讲法
         <textarea rows={3} value={project.pitch30} onChange={(event) => onChange({ ...project, pitch30: event.target.value })} />
       </label>
 
       <label>
-        90 秒版本
+        90 秒讲法
         <textarea rows={4} value={project.pitch90} onChange={(event) => onChange({ ...project, pitch90: event.target.value })} />
       </label>
 
@@ -134,7 +243,230 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
 
       <div className="meta-card">
         <div className="panel-head compact">
-          <span>文档资产</span>
+          <span>Manual Evidence</span>
+          <strong>{project.manualEvidence.length}</strong>
+        </div>
+        <div className="action-row">
+          <button className="ghost small" onClick={() => onChange(addManualEvidence(project))}>
+            新增证据
+          </button>
+        </div>
+        {project.manualEvidence.length === 0 ? <p className="library-empty">先把能证明你说法的 benchmark、日志、设计结论写进来。</p> : null}
+        {project.manualEvidence.map((item) => (
+          <div key={item.evidenceId} className="meta-card">
+            <div className="panel-head compact">
+              <span>{item.evidenceType}</span>
+              <strong>{item.title || item.evidenceId}</strong>
+            </div>
+            <label>
+              标题
+              <input value={item.title} onChange={(event) => onChange(updateManualEvidence(project, item.evidenceId, { title: event.target.value }))} />
+            </label>
+            <label>
+              类型
+              <input
+                value={item.evidenceType}
+                onChange={(event) => onChange(updateManualEvidence(project, item.evidenceId, { evidenceType: event.target.value }))}
+              />
+            </label>
+            <label>
+              摘要
+              <textarea
+                rows={4}
+                value={item.summary}
+                onChange={(event) => onChange(updateManualEvidence(project, item.evidenceId, { summary: event.target.value }))}
+              />
+            </label>
+            <label>
+              Source Ref
+              <input
+                value={item.sourceRef}
+                onChange={(event) => onChange(updateManualEvidence(project, item.evidenceId, { sourceRef: event.target.value }))}
+              />
+            </label>
+            <div className="session-chip">
+              <span>{item.sourceKind}</span>
+              <span>{item.confidence}</span>
+            </div>
+            <div className="action-row">
+              <button className="ghost small" onClick={() => onChange(deleteManualEvidence(project, item.evidenceId))}>
+                删除证据
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="meta-card">
+        <div className="panel-head compact">
+          <span>Manual Metrics</span>
+          <strong>{project.manualMetrics.length}</strong>
+        </div>
+        <div className="action-row">
+          <button className="ghost small" onClick={() => onChange(addManualMetric(project))}>
+            新增指标
+          </button>
+        </div>
+        {project.manualMetrics.length === 0 ? <p className="library-empty">把最想在面试里拿出来的量化结果和测量口径写进来。</p> : null}
+        {project.manualMetrics.map((item) => (
+          <div key={item.evidenceId} className="meta-card">
+            <div className="panel-head compact">
+              <span>{item.metricName}</span>
+              <strong>{item.metricValue || "No value"}</strong>
+            </div>
+            <label>
+              Metric Name
+              <input
+                value={item.metricName}
+                onChange={(event) => onChange(updateManualMetric(project, item.evidenceId, { metricName: event.target.value }))}
+              />
+            </label>
+            <label>
+              Metric Value
+              <input
+                value={item.metricValue}
+                onChange={(event) => onChange(updateManualMetric(project, item.evidenceId, { metricValue: event.target.value }))}
+              />
+            </label>
+            <label>
+              Baseline
+              <input
+                value={item.baseline}
+                onChange={(event) => onChange(updateManualMetric(project, item.evidenceId, { baseline: event.target.value }))}
+              />
+            </label>
+            <label>
+              Method
+              <input value={item.method} onChange={(event) => onChange(updateManualMetric(project, item.evidenceId, { method: event.target.value }))} />
+            </label>
+            <label>
+              Environment
+              <input
+                value={item.environment}
+                onChange={(event) => onChange(updateManualMetric(project, item.evidenceId, { environment: event.target.value }))}
+              />
+            </label>
+            <label>
+              Source Note
+              <input
+                value={item.sourceNote}
+                onChange={(event) => onChange(updateManualMetric(project, item.evidenceId, { sourceNote: event.target.value }))}
+              />
+            </label>
+            <div className="session-chip">
+              <span>{item.confidence}</span>
+            </div>
+            <div className="action-row">
+              <button className="ghost small" onClick={() => onChange(deleteManualMetric(project, item.evidenceId))}>
+                删除指标
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="meta-card">
+        <div className="panel-head compact">
+          <span>Manual Retrieval Units</span>
+          <strong>{project.manualRetrievalUnits.length}</strong>
+        </div>
+        <div className="action-row">
+          <button className="ghost small" onClick={() => onChange(addManualRetrievalUnit(project))}>
+            新增回答单元
+          </button>
+        </div>
+        {project.manualRetrievalUnits.length === 0 ? (
+          <p className="library-empty">把你最希望系统优先命中的项目讲法、tradeoff 讲法和深挖讲法提前写好。</p>
+        ) : null}
+        {project.manualRetrievalUnits.map((item) => (
+          <div key={item.unitId} className="meta-card">
+            <div className="panel-head compact">
+              <span>{item.unitType}</span>
+              <strong>{item.shortAnswer || item.unitId}</strong>
+            </div>
+            <label>
+              Unit Type
+              <input
+                value={item.unitType}
+                onChange={(event) => onChange(updateManualRetrievalUnit(project, item.unitId, { unitType: event.target.value }))}
+              />
+            </label>
+            <label>
+              Question Forms
+              <textarea
+                rows={3}
+                value={joinLines(item.questionForms)}
+                onChange={(event) =>
+                  onChange(updateManualRetrievalUnit(project, item.unitId, { questionForms: splitLines(event.target.value) }))
+                }
+              />
+            </label>
+            <label>
+              Short Answer
+              <textarea
+                rows={3}
+                value={item.shortAnswer}
+                onChange={(event) => onChange(updateManualRetrievalUnit(project, item.unitId, { shortAnswer: event.target.value }))}
+              />
+            </label>
+            <label>
+              Long Answer
+              <textarea
+                rows={5}
+                value={item.longAnswer}
+                onChange={(event) => onChange(updateManualRetrievalUnit(project, item.unitId, { longAnswer: event.target.value }))}
+              />
+            </label>
+            <label>
+              Key Points
+              <textarea
+                rows={3}
+                value={joinLines(item.keyPoints)}
+                onChange={(event) =>
+                  onChange(updateManualRetrievalUnit(project, item.unitId, { keyPoints: splitLines(event.target.value) }))
+                }
+              />
+            </label>
+            <label>
+              Supporting Refs
+              <textarea
+                rows={2}
+                value={joinLines(item.supportingRefs)}
+                onChange={(event) =>
+                  onChange(updateManualRetrievalUnit(project, item.unitId, { supportingRefs: splitLines(event.target.value) }))
+                }
+              />
+            </label>
+            <label>
+              Hooks
+              <textarea
+                rows={2}
+                value={joinLines(item.hooks)}
+                onChange={(event) => onChange(updateManualRetrievalUnit(project, item.unitId, { hooks: splitLines(event.target.value) }))}
+              />
+            </label>
+            <label>
+              Safe Claims
+              <textarea
+                rows={2}
+                value={joinLines(item.safeClaims)}
+                onChange={(event) =>
+                  onChange(updateManualRetrievalUnit(project, item.unitId, { safeClaims: splitLines(event.target.value) }))
+                }
+              />
+            </label>
+            <div className="action-row">
+              <button className="ghost small" onClick={() => onChange(deleteManualRetrievalUnit(project, item.unitId))}>
+                删除回答单元
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="meta-card">
+        <div className="panel-head compact">
+          <span>Documents</span>
           <strong>{project.documents.length}</strong>
         </div>
         <div className="action-row">
@@ -146,7 +478,7 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
         {project.documents.map((document) => (
           <div key={document.documentId} className="meta-card">
             <div className="panel-head compact">
-              <span>{document.sourceKind === "repo_import" ? "导入文档" : "手工文档"}</span>
+              <span>{document.sourceKind === "repo_import" ? "Imported" : "Manual"}</span>
               <strong>{document.title || document.path || "Untitled"}</strong>
             </div>
             <label>
@@ -186,14 +518,14 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
 
       <div className="meta-card">
         <div className="panel-head compact">
-          <span>代码快照</span>
+          <span>Code Snapshots</span>
           <strong>{project.codeFiles.length}</strong>
         </div>
         {project.codeFiles.length === 0 ? <p className="library-empty">当前项目还没有代码快照。</p> : null}
         {project.codeFiles.map((codeFile, index) => (
           <div key={`${codeFile.path}-${index}`} className="meta-card">
             <div className="panel-head compact">
-              <span>{codeFile.sourceKind === "repo_import" ? "导入代码" : "手工代码"}</span>
+              <span>{codeFile.sourceKind === "repo_import" ? "Imported" : "Manual"}</span>
               <strong>{codeFile.path}</strong>
             </div>
             <label>
@@ -208,6 +540,10 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
                 onChange={(event) => onChange(updateCodeFile(project, index, { content: event.target.value }))}
               />
             </label>
+            <div className="session-chip">
+              <span>{codeFile.sourceKind}</span>
+              {codeFile.repoId ? <span>repo {codeFile.repoId.slice(0, 8)}</span> : null}
+            </div>
           </div>
         ))}
       </div>

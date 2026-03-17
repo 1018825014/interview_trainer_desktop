@@ -157,6 +157,24 @@ class WorkspaceManager:
             project["upgrade_plan"] = self._normalize_lines(payload.get("upgrade_plan"))
         if "interviewer_hooks" in payload:
             project["interviewer_hooks"] = self._normalize_lines(payload.get("interviewer_hooks"))
+        if "manual_evidence" in payload:
+            project["manual_evidence"] = [
+                self._normalize_manual_evidence(item, index)
+                for index, item in enumerate(payload.get("manual_evidence", []), start=1)
+                if isinstance(item, dict) and (_clean_text(item.get("title")) or _clean_text(item.get("summary")))
+            ]
+        if "manual_metrics" in payload:
+            project["manual_metrics"] = [
+                self._normalize_manual_metric(item, index)
+                for index, item in enumerate(payload.get("manual_metrics", []), start=1)
+                if isinstance(item, dict) and (_clean_text(item.get("metric_name")) or _clean_text(item.get("metric_value")))
+            ]
+        if "manual_retrieval_units" in payload:
+            project["manual_retrieval_units"] = [
+                self._normalize_manual_retrieval_unit(item, index)
+                for index, item in enumerate(payload.get("manual_retrieval_units", []), start=1)
+                if isinstance(item, dict) and (_clean_text(item.get("short_answer")) or _clean_text(item.get("long_answer")))
+            ]
         if "documents" in payload:
             project["documents"] = [
                 self._normalize_document_asset(item, scope="project", default_title=f"{DEFAULT_PROJECT_DOCUMENT_TITLE} {index}")
@@ -466,6 +484,21 @@ class WorkspaceManager:
         project["limitations"] = self._normalize_lines(payload.get("limitations")) or project["limitations"]
         project["upgrade_plan"] = self._normalize_lines(payload.get("upgrade_plan")) or project["upgrade_plan"]
         project["interviewer_hooks"] = self._normalize_lines(payload.get("interviewer_hooks")) or project["interviewer_hooks"]
+        project["manual_evidence"] = [
+            self._normalize_manual_evidence(item, index)
+            for index, item in enumerate(payload.get("manual_evidence", []), start=1)
+            if isinstance(item, dict) and (_clean_text(item.get("title")) or _clean_text(item.get("summary")))
+        ]
+        project["manual_metrics"] = [
+            self._normalize_manual_metric(item, index)
+            for index, item in enumerate(payload.get("manual_metrics", []), start=1)
+            if isinstance(item, dict) and (_clean_text(item.get("metric_name")) or _clean_text(item.get("metric_value")))
+        ]
+        project["manual_retrieval_units"] = [
+            self._normalize_manual_retrieval_unit(item, index)
+            for index, item in enumerate(payload.get("manual_retrieval_units", []), start=1)
+            if isinstance(item, dict) and (_clean_text(item.get("short_answer")) or _clean_text(item.get("long_answer")))
+        ]
         project["repo_summaries"] = [
             {
                 "repo_id": _clean_text(item.get("repo_id")) or str(uuid4()),
@@ -505,6 +538,9 @@ class WorkspaceManager:
             "limitations": [],
             "upgrade_plan": [],
             "interviewer_hooks": [],
+            "manual_evidence": [],
+            "manual_metrics": [],
+            "manual_retrieval_units": [],
             "repo_summaries": [],
             "documents": [],
             "code_files": [],
@@ -524,6 +560,12 @@ class WorkspaceManager:
             "limitations": list(project.get("limitations", [])),
             "upgrade_plan": list(project.get("upgrade_plan", [])),
             "interviewer_hooks": list(project.get("interviewer_hooks", [])),
+            "manual_evidence": [self._serialize_manual_evidence(item) for item in project.get("manual_evidence", [])],
+            "manual_metrics": [self._serialize_manual_metric(item) for item in project.get("manual_metrics", [])],
+            "manual_retrieval_units": [
+                self._serialize_manual_retrieval_unit(item)
+                for item in project.get("manual_retrieval_units", [])
+            ],
             "repo_summaries": [dict(item) for item in project.get("repo_summaries", [])],
             "documents": [self._serialize_document(item) for item in project.get("documents", [])],
             "code_files": [self._serialize_code_file(item) for item in project.get("code_files", [])],
@@ -641,6 +683,84 @@ class WorkspaceManager:
             "source_kind": code_file.get("source_kind", "manual"),
             "source_path": code_file.get("source_path", ""),
             "repo_id": code_file.get("repo_id", ""),
+        }
+
+    def _normalize_manual_evidence(self, payload: dict[str, Any], index: int) -> dict[str, Any]:
+        return {
+            "evidence_id": _clean_text(payload.get("evidence_id")) or f"manual-evidence-{index}",
+            "module_id": _clean_text(payload.get("module_id")) or None,
+            "evidence_type": _clean_text(payload.get("evidence_type")) or "manual_note",
+            "title": _clean_text(payload.get("title")) or f"Evidence {index}",
+            "summary": _clean_text(payload.get("summary")),
+            "source_kind": _clean_text(payload.get("source_kind")) or "manual_note",
+            "source_ref": _clean_text(payload.get("source_ref")) or "workspace note",
+            "confidence": _clean_text(payload.get("confidence")) or "medium",
+        }
+
+    def _serialize_manual_evidence(self, evidence: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "evidence_id": evidence.get("evidence_id", ""),
+            "module_id": evidence.get("module_id"),
+            "evidence_type": evidence.get("evidence_type", "manual_note"),
+            "title": evidence.get("title", ""),
+            "summary": evidence.get("summary", ""),
+            "source_kind": evidence.get("source_kind", "manual_note"),
+            "source_ref": evidence.get("source_ref", ""),
+            "confidence": evidence.get("confidence", "medium"),
+        }
+
+    def _normalize_manual_metric(self, payload: dict[str, Any], index: int) -> dict[str, Any]:
+        return {
+            "evidence_id": _clean_text(payload.get("evidence_id")) or f"manual-metric-{index}",
+            "module_id": _clean_text(payload.get("module_id")) or None,
+            "metric_name": _clean_text(payload.get("metric_name")) or f"metric_{index}",
+            "metric_value": _clean_text(payload.get("metric_value")),
+            "baseline": _clean_text(payload.get("baseline")),
+            "method": _clean_text(payload.get("method")) or "manual note",
+            "environment": _clean_text(payload.get("environment")) or "workspace",
+            "source_note": _clean_text(payload.get("source_note")) or "manual metric",
+            "confidence": _clean_text(payload.get("confidence")) or "medium",
+        }
+
+    def _serialize_manual_metric(self, metric: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "evidence_id": metric.get("evidence_id", ""),
+            "module_id": metric.get("module_id"),
+            "metric_name": metric.get("metric_name", ""),
+            "metric_value": metric.get("metric_value", ""),
+            "baseline": metric.get("baseline", ""),
+            "method": metric.get("method", "manual note"),
+            "environment": metric.get("environment", "workspace"),
+            "source_note": metric.get("source_note", ""),
+            "confidence": metric.get("confidence", "medium"),
+        }
+
+    def _normalize_manual_retrieval_unit(self, payload: dict[str, Any], index: int) -> dict[str, Any]:
+        return {
+            "unit_id": _clean_text(payload.get("unit_id")) or f"manual-ru-{index}",
+            "unit_type": _clean_text(payload.get("unit_type")) or "project_intro",
+            "module_id": _clean_text(payload.get("module_id")) or None,
+            "question_forms": self._normalize_lines(payload.get("question_forms")),
+            "short_answer": _clean_text(payload.get("short_answer")),
+            "long_answer": _clean_text(payload.get("long_answer")),
+            "key_points": self._normalize_lines(payload.get("key_points")),
+            "supporting_refs": self._normalize_lines(payload.get("supporting_refs")),
+            "hooks": self._normalize_lines(payload.get("hooks")),
+            "safe_claims": self._normalize_lines(payload.get("safe_claims")),
+        }
+
+    def _serialize_manual_retrieval_unit(self, unit: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "unit_id": unit.get("unit_id", ""),
+            "unit_type": unit.get("unit_type", "project_intro"),
+            "module_id": unit.get("module_id"),
+            "question_forms": list(unit.get("question_forms", [])),
+            "short_answer": unit.get("short_answer", ""),
+            "long_answer": unit.get("long_answer", ""),
+            "key_points": list(unit.get("key_points", [])),
+            "supporting_refs": list(unit.get("supporting_refs", [])),
+            "hooks": list(unit.get("hooks", [])),
+            "safe_claims": list(unit.get("safe_claims", [])),
         }
 
     def _relative_path(self, root: Path, file_path: Path) -> str:
@@ -854,17 +974,65 @@ class WorkspaceManager:
                 if not _clean_text(project.get("project_id")):
                     project["project_id"] = str(uuid4())
                     changed = True
-                for field in ("pitch_30", "pitch_90", "key_metrics", "tradeoffs", "failure_cases", "limitations", "upgrade_plan", "interviewer_hooks"):
+                for field in (
+                    "pitch_30",
+                    "pitch_90",
+                    "key_metrics",
+                    "tradeoffs",
+                    "failure_cases",
+                    "limitations",
+                    "upgrade_plan",
+                    "interviewer_hooks",
+                    "manual_evidence",
+                    "manual_metrics",
+                    "manual_retrieval_units",
+                ):
                     if field not in project:
-                        project[field] = [] if field.endswith("s") or field in {"key_metrics", "tradeoffs"} else ""
+                        project[field] = [] if field.endswith("s") or field in {
+                            "key_metrics",
+                            "tradeoffs",
+                            "manual_evidence",
+                            "manual_metrics",
+                            "manual_retrieval_units",
+                        } else ""
                         changed = True
                 if not isinstance(project.get("key_metrics"), list):
                     project["key_metrics"] = self._normalize_lines(project.get("key_metrics"))
                     changed = True
-                for field in ("tradeoffs", "failure_cases", "limitations", "upgrade_plan", "interviewer_hooks"):
+                for field in (
+                    "tradeoffs",
+                    "failure_cases",
+                    "limitations",
+                    "upgrade_plan",
+                    "interviewer_hooks",
+                ):
                     if not isinstance(project.get(field), list):
                         project[field] = self._normalize_lines(project.get(field))
                         changed = True
+                normalized_manual_evidence = [
+                    self._normalize_manual_evidence(item, index)
+                    for index, item in enumerate(project.get("manual_evidence", []), start=1)
+                    if isinstance(item, dict) and (_clean_text(item.get("title")) or _clean_text(item.get("summary")))
+                ]
+                if normalized_manual_evidence != project.get("manual_evidence", []):
+                    project["manual_evidence"] = normalized_manual_evidence
+                    changed = True
+                normalized_manual_metrics = [
+                    self._normalize_manual_metric(item, index)
+                    for index, item in enumerate(project.get("manual_metrics", []), start=1)
+                    if isinstance(item, dict) and (_clean_text(item.get("metric_name")) or _clean_text(item.get("metric_value")))
+                ]
+                if normalized_manual_metrics != project.get("manual_metrics", []):
+                    project["manual_metrics"] = normalized_manual_metrics
+                    changed = True
+                normalized_manual_units = [
+                    self._normalize_manual_retrieval_unit(item, index)
+                    for index, item in enumerate(project.get("manual_retrieval_units", []), start=1)
+                    if isinstance(item, dict) and (_clean_text(item.get("short_answer")) or _clean_text(item.get("long_answer")))
+                ]
+                if normalized_manual_units != project.get("manual_retrieval_units", []):
+                    project["manual_retrieval_units"] = normalized_manual_units
+                    changed = True
                 if "repo_summaries" not in project:
                     project["repo_summaries"] = []
                     changed = True

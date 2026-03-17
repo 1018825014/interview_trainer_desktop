@@ -47,6 +47,42 @@ export interface LibraryCodeFileRecord {
   repoId: string;
 }
 
+export interface LibraryManualEvidenceRecord {
+  evidenceId: string;
+  moduleId: string;
+  evidenceType: string;
+  title: string;
+  summary: string;
+  sourceKind: string;
+  sourceRef: string;
+  confidence: string;
+}
+
+export interface LibraryManualMetricRecord {
+  evidenceId: string;
+  moduleId: string;
+  metricName: string;
+  metricValue: string;
+  baseline: string;
+  method: string;
+  environment: string;
+  sourceNote: string;
+  confidence: string;
+}
+
+export interface LibraryManualRetrievalUnitRecord {
+  unitId: string;
+  unitType: string;
+  moduleId: string;
+  questionForms: string[];
+  shortAnswer: string;
+  longAnswer: string;
+  keyPoints: string[];
+  supportingRefs: string[];
+  hooks: string[];
+  safeClaims: string[];
+}
+
 export interface LibraryRepoSummaryRecord {
   repoId: string;
   label: string;
@@ -70,6 +106,9 @@ export interface LibraryProjectRecord {
   limitations: string[];
   upgradePlan: string[];
   interviewerHooks: string[];
+  manualEvidence: LibraryManualEvidenceRecord[];
+  manualMetrics: LibraryManualMetricRecord[];
+  manualRetrievalUnits: LibraryManualRetrievalUnitRecord[];
   repoSummaries: LibraryRepoSummaryRecord[];
   documents: LibraryDocumentRecord[];
   codeFiles: LibraryCodeFileRecord[];
