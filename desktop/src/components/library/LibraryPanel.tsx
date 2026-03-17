@@ -30,6 +30,7 @@ import {
   reuseLibraryBundleSessionPayload,
   updateLibraryDocument,
   updateLibraryOverlay,
+  updateLibraryAuthoringTemplate,
   updateLibraryProjectAuthoringPack,
   updateLibraryPreset,
   updateLibraryProject,
@@ -1159,6 +1160,25 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     }
   }
 
+  async function handleUpdateAuthoringTemplate(templateId: string, payload: Record<string, unknown>) {
+    if (!backendOnline || !selectedProject) {
+      setProjectAuthoringStatus("请先连接后端并选择项目。");
+      return;
+    }
+    try {
+      const template = await updateLibraryAuthoringTemplate(
+        backendBaseUrl,
+        templateId,
+        payload,
+      );
+      replaceAuthoringTemplate(template);
+      setProjectAuthoringStatus(`已更新模板 ${template.name}。`);
+      setStatusMessage(`项目 ${selectedProject.name} 的作者模板已更新。`);
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "更新作者模板失败。");
+    }
+  }
+
   async function handleApplySavedTemplate(
     templateId: string,
     mode: "replace" | "append",
@@ -1746,6 +1766,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
               onPreviewAuthoringPack={handlePreviewProjectAuthoringPack}
               onApplyAuthoringPack={handleApplyProjectAuthoringPack}
               onSaveAuthoringTemplate={handleSaveAuthoringTemplate}
+              onUpdateAuthoringTemplate={handleUpdateAuthoringTemplate}
               onApplySavedTemplate={handleApplySavedTemplate}
               onDeleteAuthoringTemplate={handleDeleteAuthoringTemplate}
               onCreateDocument={handleCreateProjectDocument}

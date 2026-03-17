@@ -578,6 +578,95 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(refreshed_target["manual_evidence"][0]["title"], "Load Test")
         self.assertEqual(refreshed_target["manual_retrieval_units"][0]["unit_id"], "manual-ru-1")
 
+    def test_library_authoring_templates_support_update_and_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+
+            created_template = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/authoring-templates",
+                json={
+                    "name": "Tradeoff Pack",
+                    "description": "Reusable tradeoff template",
+                    "source_project_id": project["project_id"],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-1",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this architecture?"],
+                            "short_answer": "I optimized for debuggability first.",
+                            "long_answer": "Smaller components made retrieval failures easier to debug.",
+                            "key_points": ["debuggability"],
+                            "supporting_refs": [],
+                            "hooks": ["The retrieval router was the hardest part."],
+                            "safe_claims": ["The architecture prioritized debuggability."],
+                        }
+                    ],
+                },
+            ).json()
+
+            updated_template = client.put(
+                f"/api/library/authoring-templates/{created_template['template_id']}",
+                json={
+                    "name": "Tradeoff Pack v2",
+                    "description": "Reusable tradeoff template with performance evidence",
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-evidence-1",
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 interview prompts locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_metrics": [
+                        {
+                            "evidence_id": "manual-metric-1",
+                            "metric_name": "first_token_latency",
+                            "metric_value": "850ms",
+                            "baseline": "1.7s",
+                            "method": "local benchmark",
+                            "environment": "sqlite + fast model",
+                            "source_note": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-1",
+                            "unit_type": "performance_evidence",
+                            "question_forms": ["How did you improve latency?"],
+                            "short_answer": "I shortened the retrieval path first.",
+                            "long_answer": "I moved the strongest evidence closer to the starter path so first token latency dropped quickly.",
+                            "key_points": ["latency", "retrieval"],
+                            "supporting_refs": ["manual-evidence-1", "manual-metric-1"],
+                            "hooks": ["The retrieval router latency was the hardest part."],
+                            "safe_claims": ["The system improved first token latency."],
+                        }
+                    ],
+                },
+            ).json()
+            listed_templates = client.get(
+                f"/api/library/workspaces/{workspace['workspace_id']}/authoring-templates"
+            ).json()
+            deleted = client.delete(
+                f"/api/library/authoring-templates/{created_template['template_id']}"
+            ).json()
+            listed_after_delete = client.get(
+                f"/api/library/workspaces/{workspace['workspace_id']}/authoring-templates"
+            ).json()
+
+        self.assertEqual(updated_template["name"], "Tradeoff Pack v2")
+        self.assertEqual(updated_template["manual_evidence"][0]["title"], "Load Test")
+        self.assertEqual(updated_template["manual_metrics"][0]["metric_name"], "first_token_latency")
+        self.assertEqual(updated_template["manual_retrieval_units"][0]["unit_type"], "performance_evidence")
+        self.assertEqual(len(listed_templates["authoring_templates"]), 1)
+        self.assertEqual(deleted["status"], "deleted")
+        self.assertEqual(listed_after_delete["authoring_templates"], [])
+
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

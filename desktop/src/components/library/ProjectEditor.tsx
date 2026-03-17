@@ -23,6 +23,7 @@ interface ProjectEditorProps {
   onPreviewAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
   onApplyAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
   onSaveAuthoringTemplate: (payload: Record<string, unknown>) => Promise<void>;
+  onUpdateAuthoringTemplate: (templateId: string, payload: Record<string, unknown>) => Promise<void>;
   onApplySavedTemplate: (templateId: string, mode: "replace" | "append") => Promise<LibraryProjectAuthoringPackRecord | null>;
   onDeleteAuthoringTemplate: (templateId: string) => Promise<void>;
   onCreateDocument: () => void;
@@ -121,6 +122,14 @@ function buildAuthoringDraftFromPack(pack: LibraryProjectAuthoringPackRecord | n
     manualEvidence: pack.manualEvidence,
     manualMetrics: pack.manualMetrics,
     manualRetrievalUnits: pack.manualRetrievalUnits,
+  });
+}
+
+function buildAuthoringDraftFromTemplate(template: LibraryAuthoringTemplateRecord): string {
+  return buildAuthoringDraftPayload({
+    manualEvidence: template.manualEvidence,
+    manualMetrics: template.manualMetrics,
+    manualRetrievalUnits: template.manualRetrievalUnits,
   });
 }
 
@@ -271,6 +280,7 @@ export function ProjectEditor({
   onPreviewAuthoringPack,
   onApplyAuthoringPack,
   onSaveAuthoringTemplate,
+  onUpdateAuthoringTemplate,
   onApplySavedTemplate,
   onDeleteAuthoringTemplate,
   onCreateDocument,
@@ -284,6 +294,7 @@ export function ProjectEditor({
   const [templateNameDraft, setTemplateNameDraft] = useState("");
   const [templateDescriptionDraft, setTemplateDescriptionDraft] = useState("");
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const templateImportInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setAuthoringDraft(buildAuthoringDraft(project));
@@ -374,6 +385,127 @@ export function ProjectEditor({
     if (pack) {
       setAuthoringDraft(buildAuthoringDraftFromPack(pack));
       setAuthoringDraftError("");
+    }
+  }
+
+  async function handleOverwriteTemplate(templateId: string) {
+    const parsed = parseAuthoringDraft(authoringDraft);
+    if (!parsed.payload || !project) {
+      setAuthoringDraftError(parsed.error || "Project is required to update a template.");
+      return;
+    }
+    setAuthoringDraftError("");
+    await onUpdateAuthoringTemplate(templateId, {
+      name: templateNameDraft || `${project.name} Template`,
+      description: templateDescriptionDraft,
+      source_project_id: project.projectId,
+      ...parsed.payload,
+    });
+  }
+
+  function handleLoadTemplateIntoDraft(template: LibraryAuthoringTemplateRecord) {
+    setAuthoringDraft(buildAuthoringDraftFromTemplate(template));
+    setTemplateNameDraft(template.name);
+    setTemplateDescriptionDraft(template.description);
+    setAuthoringDraftError("");
+  }
+
+  function handleExportTemplate(template: LibraryAuthoringTemplateRecord) {
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            name: template.name,
+            description: template.description,
+            source_project_id: template.sourceProjectId,
+            manual_evidence: template.manualEvidence.map((item) => ({
+              evidence_id: item.evidenceId,
+              module_id: item.moduleId,
+              evidence_type: item.evidenceType,
+              title: item.title,
+              summary: item.summary,
+              source_kind: item.sourceKind,
+              source_ref: item.sourceRef,
+              confidence: item.confidence,
+            })),
+            manual_metrics: template.manualMetrics.map((item) => ({
+              evidence_id: item.evidenceId,
+              module_id: item.moduleId,
+              metric_name: item.metricName,
+              metric_value: item.metricValue,
+              baseline: item.baseline,
+              method: item.method,
+              environment: item.environment,
+              source_note: item.sourceNote,
+              confidence: item.confidence,
+            })),
+            manual_retrieval_units: template.manualRetrievalUnits.map((item) => ({
+              unit_id: item.unitId,
+              unit_type: item.unitType,
+              module_id: item.moduleId,
+              question_forms: item.questionForms,
+              short_answer: item.shortAnswer,
+              long_answer: item.longAnswer,
+              key_points: item.keyPoints,
+              supporting_refs: item.supportingRefs,
+              hooks: item.hooks,
+              safe_claims: item.safeClaims,
+            })),
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${template.name.replace(/[^a-z0-9-_]+/gi, "-").toLowerCase() || "authoring-template"}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportTemplateClick() {
+    templateImportInputRef.current?.click();
+  }
+
+  async function handleImportTemplateFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const content = await file.text();
+      const parsed = parseAuthoringDraft(content);
+      if (!parsed.payload || !project) {
+        setAuthoringDraftError(parsed.error || "Project is required to import a template.");
+        return;
+      }
+      const importedTemplate = JSON.parse(content) as Record<string, unknown>;
+      const importedName =
+        (typeof importedTemplate.name === "string" && importedTemplate.name.trim()) ||
+        file.name.replace(/\.json$/i, "") ||
+        `${project.name} Imported Template`;
+      const importedDescription =
+        typeof importedTemplate.description === "string" ? importedTemplate.description : "";
+      await onSaveAuthoringTemplate({
+        name: importedName,
+        description: importedDescription,
+        source_project_id:
+          typeof importedTemplate.source_project_id === "string" && importedTemplate.source_project_id.trim()
+            ? importedTemplate.source_project_id
+            : project.projectId,
+        ...parsed.payload,
+      });
+      setAuthoringDraft(JSON.stringify(parsed.payload, null, 2));
+      setTemplateNameDraft(importedName);
+      setTemplateDescriptionDraft(importedDescription);
+      setAuthoringDraftError("");
+    } catch (error) {
+      setAuthoringDraftError(error instanceof Error ? error.message : "Failed to import template JSON file.");
+    } finally {
+      event.target.value = "";
     }
   }
 
@@ -700,6 +832,9 @@ export function ProjectEditor({
             <button className="ghost small" onClick={() => void handleSaveTemplate()}>
               Save Current Draft As Template
             </button>
+            <button className="ghost small" onClick={handleImportTemplateClick}>
+              Import Template JSON
+            </button>
           </div>
           {authoringTemplates.length === 0 ? (
             <p className="library-empty">先把一个项目的回答素材沉淀成模板，后面就能快速复用到其他项目。</p>
@@ -717,11 +852,20 @@ export function ProjectEditor({
                   <span>{template.manualRetrievalUnits.length} RU</span>
                 </div>
                 <div className="action-row">
+                  <button className="ghost small" onClick={() => handleLoadTemplateIntoDraft(template)}>
+                    Load Into Draft
+                  </button>
+                  <button className="ghost small" onClick={() => void handleOverwriteTemplate(template.templateId)}>
+                    Overwrite From Draft
+                  </button>
                   <button className="ghost small" onClick={() => void handleApplySavedTemplate(template.templateId, "replace")}>
                     Replace With Template
                   </button>
                   <button className="ghost small" onClick={() => void handleApplySavedTemplate(template.templateId, "append")}>
                     Append Template
+                  </button>
+                  <button className="ghost small" onClick={() => handleExportTemplate(template)}>
+                    Export Template
                   </button>
                   <button className="ghost small" onClick={() => void onDeleteAuthoringTemplate(template.templateId)}>
                     Delete Template
@@ -761,6 +905,13 @@ export function ProjectEditor({
           </button>
         </div>
         <input ref={importInputRef} type="file" accept="application/json,.json" hidden onChange={handleImportDraftFile} />
+        <input
+          ref={templateImportInputRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={handleImportTemplateFile}
+        />
         <label>
           Authoring JSON
           <textarea

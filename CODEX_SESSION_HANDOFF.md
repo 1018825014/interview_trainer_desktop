@@ -621,14 +621,40 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `75/75` passing
+- Stage 20 implemented:
+  - expanded the saved-template workflow into a fuller authoring-template management layer
+  - backend regression coverage now explicitly verifies authoring templates can be:
+    - updated in place
+    - listed after update
+    - deleted cleanly
+  - desktop project editing now supports a much stronger saved-template loop:
+    - save the current authoring draft as a new template
+    - load any saved template back into the current draft without applying it to the project yet
+    - overwrite an existing saved template from the current draft
+    - export a saved template as JSON for reuse outside the current workspace
+    - import a template JSON file directly into the workspace template library
+  - imported template JSON can carry:
+    - name
+    - description
+    - source project id
+    - manual evidence / manual metrics / manual retrieval units
+  - when a template is loaded into the draft, the editor also syncs the template name / description inputs so the next save or overwrite is fast
+  - this makes authoring templates feel much closer to a reusable interview-material library instead of a one-shot helper action
+- Stage 20 verification:
+  - targeted backend tests:
+    - `tests.test_library_api -v`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `76/76` passing
 - Recommended next implementation order:
   1. larger-library workspace preview UX polish
   2. preset workflow refinement:
      - saved preset families for one-click company switching
      - compare current preset against a non-latest historical bundle on demand
   3. authoring-pack refinement:
-     - saved template presets across projects
      - smarter dedupe / rename suggestions when importing external templates
+     - bulk-export / bulk-import of whole template sets
   4. deeper answer naturalness tuning:
      - transcript-informed rhythm / pacing
      - stronger spoken Chinese variation beyond plan-level control
