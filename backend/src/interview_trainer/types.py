@@ -162,6 +162,7 @@ class ContextRoute:
 class KnowledgePack:
     profile_refs: list[EvidenceRef] = field(default_factory=list)
     retrieval_refs: list[EvidenceRef] = field(default_factory=list)
+    hook_refs: list[EvidenceRef] = field(default_factory=list)
     evidence_refs: list[EvidenceRef] = field(default_factory=list)
     project_refs: list[EvidenceRef] = field(default_factory=list)
     module_refs: list[EvidenceRef] = field(default_factory=list)

@@ -237,6 +237,12 @@ export interface LibraryBundleComparisonRecord {
   terminologyDelta: number;
   addedFocusTopics: string[];
   removedFocusTopics: string[];
+  addedRetrievalUnits: string[];
+  removedRetrievalUnits: string[];
+  addedEvidenceTitles: string[];
+  removedEvidenceTitles: string[];
+  addedHookTexts: string[];
+  removedHookTexts: string[];
 }
 
 export interface LibraryKnowledgeRecord {

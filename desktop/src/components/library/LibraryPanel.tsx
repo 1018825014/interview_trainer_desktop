@@ -1153,6 +1153,12 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
                           <p>Removed projects: {bundleComparison.removedProjects.join(" / ") || "--"}</p>
                           <p>Added focus topics: {bundleComparison.addedFocusTopics.join(" / ") || "--"}</p>
                           <p>Removed focus topics: {bundleComparison.removedFocusTopics.join(" / ") || "--"}</p>
+                          <p>Added retrieval units: {bundleComparison.addedRetrievalUnits.join(" / ") || "--"}</p>
+                          <p>Removed retrieval units: {bundleComparison.removedRetrievalUnits.join(" / ") || "--"}</p>
+                          <p>Added evidence: {bundleComparison.addedEvidenceTitles.join(" / ") || "--"}</p>
+                          <p>Removed evidence: {bundleComparison.removedEvidenceTitles.join(" / ") || "--"}</p>
+                          <p>Added hooks: {bundleComparison.addedHookTexts.join(" / ") || "--"}</p>
+                          <p>Removed hooks: {bundleComparison.removedHookTexts.join(" / ") || "--"}</p>
                         </>
                       ) : (
                         <p className="library-empty">选择另一个 bundle 后，这里会显示项目覆盖和回答素材规模的差异。</p>

@@ -196,6 +196,28 @@ class LibraryApiTests(unittest.TestCase):
                     "pitch_30": "Pitch one",
                     "business_value": "Build agent workflows",
                     "architecture": "React + Python",
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-evidence-1",
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 interview questions locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-1",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this architecture?"],
+                            "short_answer": "I optimized for debuggability first.",
+                            "long_answer": "I split the system to make retrieval failures easier to debug.",
+                            "key_points": ["debuggability", "latency"],
+                            "supporting_refs": ["manual-evidence-1"],
+                            "hooks": ["The retrieval router was the hardest part."],
+                            "safe_claims": ["The architecture was chosen for debuggability."],
+                        }
+                    ],
                 },
             ).json()
             project_two = client.post(
@@ -205,6 +227,28 @@ class LibraryApiTests(unittest.TestCase):
                     "pitch_30": "Pitch two",
                     "business_value": "Improve retrieval quality",
                     "architecture": "SQLite + local bundle compiler",
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-evidence-2",
+                            "title": "Offline Eval",
+                            "summary": "Compared three reranking strategies offline.",
+                            "source_ref": "evals/retrieval-ops.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-2",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this retrieval pipeline?"],
+                            "short_answer": "I optimized bundle reuse for fast company switching.",
+                            "long_answer": "I stored session-ready snapshots so I could swap contexts in seconds.",
+                            "key_points": ["reuse", "switching"],
+                            "supporting_refs": ["manual-evidence-2"],
+                            "hooks": ["Bundle reuse made company-specific switching much faster."],
+                            "safe_claims": ["The pipeline prioritized fast context switching."],
+                        }
+                    ],
                 },
             ).json()
             overlay = client.post(
@@ -253,6 +297,12 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(comparison["project_count_delta"], 1)
         self.assertEqual(comparison["added_projects"], ["Retrieval Ops"])
         self.assertEqual(comparison["removed_projects"], [])
+        self.assertIn("Retrieval Ops / tradeoff_reasoning", comparison["added_retrieval_units"])
+        self.assertEqual(comparison["removed_retrieval_units"], [])
+        self.assertIn("Offline Eval", comparison["added_evidence_titles"])
+        self.assertEqual(comparison["removed_evidence_titles"], [])
+        self.assertIn("Bundle reuse made company-specific switching much faster.", comparison["added_hook_texts"])
+        self.assertEqual(comparison["removed_hook_texts"], [])
 
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

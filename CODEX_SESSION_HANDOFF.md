@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `44/44` passing
+- Backend tests: `51/51` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -114,7 +114,7 @@ Recommended current setup:
 - Desktop library UX is now usable, but still lacks:
   - document-specific CRUD surfaces
   - repo reindex controls
-  - richer bundle history / compare views
+  - workspace-level compiled preview navigation and filtering polish
 - Need more real-user testing on:
   - naturalness
   - latency tolerance
@@ -393,11 +393,35 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `50/50` passing
+- Stage 12 implemented:
+  - runtime retrieval is now hook-aware:
+    - `ContextRouter.build_pack_for_plan()` accepts `answer_state`
+    - `LibraryRetriever` now prefers retrieval units with unused hooks when `allow_hook=true`
+    - `KnowledgePack` now carries `hook_refs`
+  - runtime answer state now persists used hook ids:
+    - `AnswerController.advance_state()` records hook-bearing retrieval units already used in prior turns
+    - prompts now expose used hook ids and selected hook refs to the model
+  - bundle history compare is now artifact-aware, not only count-aware:
+    - session-payload build now stores a lightweight bundle `artifact_index`
+    - bundle compare API now reports added/removed:
+      - retrieval units
+      - evidence titles
+      - hook texts
+  - desktop bundle compare view now renders those detailed diffs directly in the bundle panel
+- Stage 12 verification:
+  - targeted backend tests:
+    - `test_routing.py`
+    - `test_generation.py`
+    - `test_library_api.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `51/51` passing
 - Recommended next implementation order:
-  1. deeper retrieval ranking and hook control tuning
+  1. workspace-level compiled preview navigation and filtering polish
   2. direct document-asset persistence actions in the desktop editor
-  3. workspace-level compiled preview navigation and filtering polish
-  4. bundle diff UX polish for evidence / retrieval-unit level changes
+  3. deeper answer naturalness tuning based on real interview transcripts
+  4. evidence / retrieval-unit authoring ergonomics and batch editing
 
 ## Best next debugging tasks
 

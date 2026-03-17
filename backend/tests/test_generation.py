@@ -59,6 +59,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             pack=KnowledgePack(
                 retrieval_refs=[EvidenceRef(ref_id="ru-1", label="Tradeoff Unit", kind="retrieval", snippet="Modular orchestration")],
                 evidence_refs=[EvidenceRef(ref_id="ev-1", label="README.md", kind="evidence", snippet="Latency dropped from 1.8s to 900ms")],
+                hook_refs=[EvidenceRef(ref_id="ru-1", label="The retrieval router was the hardest part", kind="hook", snippet="use once")],
                 code_refs=[EvidenceRef(ref_id="code-1", label="workflow.py", kind="code", snippet="def run(): pass")],
             ),
             briefing=SessionBriefing(
@@ -80,13 +81,19 @@ class OpenAIChatProviderTests(unittest.TestCase):
                 need_code_evidence=False,
                 allow_hook=True,
             ),
-            answer_state=AnswerState(active_project_id="agentops-console", followup_thread="tradeoff_reasoning"),
+            answer_state=AnswerState(
+                active_project_id="agentops-console",
+                used_hook_ids=["manual-ru-0"],
+                followup_thread="tradeoff_reasoning",
+            ),
         )
         user_message = messages[1]["content"]
 
         self.assertIn("[retrieval] Tradeoff Unit", user_message)
         self.assertIn("[evidence] README.md", user_message)
+        self.assertIn("[hook] The retrieval router was the hardest part", user_message)
         self.assertIn("Allow hook: True", user_message)
+        self.assertIn("Used hook ids: manual-ru-0", user_message)
         self.assertLess(user_message.index("[retrieval]"), user_message.index("[code]"))
 
 

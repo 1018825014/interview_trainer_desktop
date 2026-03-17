@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .answer_control import AnswerPlan
+from .answer_control import AnswerPlan, AnswerState
 from .library_retriever import LibraryRetriever
 
 from .types import (
@@ -173,11 +173,13 @@ class ContextRouter:
         compiled_bundle: CompiledBundlePayload,
         route: ContextRoute | None = None,
         briefing: SessionBriefing | None = None,
+        answer_state: AnswerState | None = None,
     ) -> KnowledgePack:
         selection = self.retriever.retrieve(
             question=question,
             plan=plan,
             bundle=compiled_bundle,
+            answer_state=answer_state,
         )
         role_refs: list[EvidenceRef] = []
         route_mode = route.mode if route is not None else ContextMode.PROJECT
@@ -203,6 +205,7 @@ class ContextRouter:
         return KnowledgePack(
             profile_refs=profile_refs,
             retrieval_refs=selection.retrieval_refs,
+            hook_refs=selection.hook_refs,
             evidence_refs=selection.evidence_refs,
             project_refs=selection.project_refs,
             module_refs=selection.module_refs,

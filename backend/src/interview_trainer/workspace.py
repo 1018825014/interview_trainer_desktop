@@ -380,6 +380,7 @@ class WorkspaceManager:
                         **self._serialize_bundle_summary(bundle),
                         "knowledge": bundle.get("knowledge", {}),
                         "briefing": bundle.get("briefing", {}),
+                        "artifact_index": dict(bundle.get("artifact_index", {})),
                     }
         raise KeyError(bundle_id)
 
@@ -404,6 +405,8 @@ class WorkspaceManager:
         removed_projects = [item for item in right_projects if item not in left_projects]
         left_focus = list(left_bundle.get("briefing", {}).get("focus_topics", []))
         right_focus = list(right_bundle.get("briefing", {}).get("focus_topics", []))
+        left_artifacts = self._normalize_bundle_artifact_index(left_bundle.get("artifact_index"))
+        right_artifacts = self._normalize_bundle_artifact_index(right_bundle.get("artifact_index"))
         return {
             "left_bundle": self._serialize_bundle_summary(left_bundle),
             "right_bundle": self._serialize_bundle_summary(right_bundle),
@@ -418,6 +421,20 @@ class WorkspaceManager:
             - int(right_bundle.get("terminology_count", 0)),
             "added_focus_topics": [item for item in left_focus if item not in right_focus],
             "removed_focus_topics": [item for item in right_focus if item not in left_focus],
+            "added_retrieval_units": [
+                item for item in left_artifacts["retrieval_units"] if item not in right_artifacts["retrieval_units"]
+            ],
+            "removed_retrieval_units": [
+                item for item in right_artifacts["retrieval_units"] if item not in left_artifacts["retrieval_units"]
+            ],
+            "added_evidence_titles": [
+                item for item in left_artifacts["evidence_titles"] if item not in right_artifacts["evidence_titles"]
+            ],
+            "removed_evidence_titles": [
+                item for item in right_artifacts["evidence_titles"] if item not in left_artifacts["evidence_titles"]
+            ],
+            "added_hook_texts": [item for item in left_artifacts["hook_texts"] if item not in right_artifacts["hook_texts"]],
+            "removed_hook_texts": [item for item in right_artifacts["hook_texts"] if item not in left_artifacts["hook_texts"]],
         }
 
     def get_workspace_compiled_preview(self, workspace_id: str) -> dict[str, Any]:
@@ -492,6 +509,7 @@ class WorkspaceManager:
             **dict(payload["activation_summary"]),
             "knowledge": payload.get("knowledge", {}),
             "briefing": payload.get("briefing", {}),
+            "artifact_index": self._normalize_bundle_artifact_index(payload.get("artifact_index")),
         }
         workspace.setdefault("compiled_bundles", []).append(bundle_record)
         workspace["updated_at"] = time.time()
@@ -821,6 +839,15 @@ class WorkspaceManager:
             "built_at": float(bundle.get("built_at", 0.0) or 0.0),
         }
 
+    def _normalize_bundle_artifact_index(self, payload: Any) -> dict[str, list[str]]:
+        raw = payload if isinstance(payload, dict) else {}
+        return {
+            "retrieval_units": self._normalize_lines(raw.get("retrieval_units")),
+            "evidence_titles": self._normalize_lines(raw.get("evidence_titles")),
+            "metric_names": self._normalize_lines(raw.get("metric_names")),
+            "hook_texts": self._normalize_lines(raw.get("hook_texts")),
+        }
+
     def _find_compiled_bundle(self, bundle_id: str) -> dict[str, Any]:
         for workspace in self._workspaces.values():
             for bundle in workspace.get("compiled_bundles", []):
@@ -1120,6 +1147,17 @@ class WorkspaceManager:
             if "compiled_bundles" not in workspace:
                 workspace["compiled_bundles"] = []
                 changed = True
+            else:
+                normalized_bundles = []
+                for bundle in workspace.get("compiled_bundles", []):
+                    if not isinstance(bundle, dict):
+                        continue
+                    normalized = dict(bundle)
+                    normalized["artifact_index"] = self._normalize_bundle_artifact_index(bundle.get("artifact_index"))
+                    normalized_bundles.append(normalized)
+                if normalized_bundles != workspace.get("compiled_bundles", []):
+                    workspace["compiled_bundles"] = normalized_bundles
+                    changed = True
             if "compiled_library_bundle" not in workspace:
                 workspace["compiled_library_bundle"] = None
                 changed = True

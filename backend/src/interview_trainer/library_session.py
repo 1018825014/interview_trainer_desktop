@@ -54,10 +54,17 @@ class LibrarySessionBuilder:
             "terminology_count": len(bundle.terminology),
             "built_at": time.time(),
         }
+        artifact_index = {
+            "retrieval_units": [self._retrieval_unit_label(unit, bundle) for unit in bundle.retrieval_units],
+            "evidence_titles": [card.title for card in bundle.evidence_cards],
+            "metric_names": [metric.metric_name for metric in bundle.metric_evidence],
+            "hook_texts": self._hook_texts(knowledge, bundle),
+        }
         return {
             "knowledge": knowledge,
             "briefing": asdict(briefing),
             "activation_summary": activation_summary,
+            "artifact_index": artifact_index,
         }
 
     def _select_knowledge(
@@ -130,3 +137,28 @@ class LibrarySessionBuilder:
             "documents": [dict(item) for item in project.get("documents", [])],
             "code_files": [dict(item) for item in project.get("code_files", [])],
         }
+
+    def _retrieval_unit_label(self, unit, bundle) -> str:
+        project_name = next(
+            (
+                project.name
+                for project in bundle.compiled_knowledge.projects
+                if project.project_id == unit.project_id
+            ),
+            unit.project_id,
+        )
+        return f"{project_name} / {unit.unit_type}"
+
+    def _hook_texts(self, knowledge: dict[str, Any], bundle) -> list[str]:
+        values: list[str] = []
+        for project in knowledge.get("projects", []):
+            for item in project.get("interviewer_hooks", []):
+                text = _clean_text(item)
+                if text and text not in values:
+                    values.append(text)
+        for unit in bundle.retrieval_units:
+            for item in unit.hooks:
+                text = _clean_text(item)
+                if text and text not in values:
+                    values.append(text)
+        return values

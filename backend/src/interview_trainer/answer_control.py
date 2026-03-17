@@ -144,6 +144,7 @@ class AnswerController:
         active_project_ids: list[str],
         active_module_ids: list[str],
         question: str,
+        used_hook_ids: list[str] | None = None,
     ) -> AnswerState:
         previous = previous_state or AnswerState()
         active_project_id = active_project_ids[0] if active_project_ids else previous.active_project_id
@@ -152,11 +153,16 @@ class AnswerController:
         snippet = _clean_text(question)[:120]
         if snippet and snippet not in spoken_claims:
             spoken_claims.append(snippet)
+        next_used_hook_ids = list(previous.used_hook_ids)
+        for hook_id in used_hook_ids or []:
+            token = _clean_text(hook_id)
+            if token and token not in next_used_hook_ids:
+                next_used_hook_ids.append(token)
         return AnswerState(
             active_project_id=active_project_id,
             active_module_id=active_module_id if plan.intent == "module_deep_dive" else None,
             spoken_claims=spoken_claims[-6:],
-            used_hook_ids=list(previous.used_hook_ids),
+            used_hook_ids=next_used_hook_ids[-6:],
             followup_thread=plan.intent,
         )
 

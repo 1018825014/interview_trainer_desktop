@@ -385,6 +385,12 @@ function mapBundleComparison(raw: any): LibraryBundleComparisonRecord {
     terminologyDelta: asNumber(raw?.terminology_delta),
     addedFocusTopics: asStringArray(raw?.added_focus_topics),
     removedFocusTopics: asStringArray(raw?.removed_focus_topics),
+    addedRetrievalUnits: asStringArray(raw?.added_retrieval_units),
+    removedRetrievalUnits: asStringArray(raw?.removed_retrieval_units),
+    addedEvidenceTitles: asStringArray(raw?.added_evidence_titles),
+    removedEvidenceTitles: asStringArray(raw?.removed_evidence_titles),
+    addedHookTexts: asStringArray(raw?.added_hook_texts),
+    removedHookTexts: asStringArray(raw?.removed_hook_texts),
   };
 }
 

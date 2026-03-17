@@ -88,6 +88,7 @@ class PromptBuilder:
                 f"Active project id: {answer_state.active_project_id if answer_state else 'N/A'}",
                 f"Active module id: {answer_state.active_module_id if answer_state else 'N/A'}",
                 f"Follow-up thread: {answer_state.followup_thread if answer_state else 'N/A'}",
+                f"Used hook ids: {', '.join(answer_state.used_hook_ids) if answer_state and answer_state.used_hook_ids else 'none'}",
                 "Candidate already said:",
                 *([f"- {item}" for item in candidate_context] or ["- nothing yet"]),
                 "Evidence pack:",
@@ -103,6 +104,7 @@ class PromptBuilder:
         refs = (
             pack.profile_refs
             + pack.retrieval_refs
+            + pack.hook_refs
             + pack.evidence_refs
             + pack.project_refs
             + pack.module_refs

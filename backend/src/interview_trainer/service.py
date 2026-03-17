@@ -196,6 +196,7 @@ class InterviewTrainerService:
                     compiled_bundle=session.library_bundle,
                     route=route,
                     briefing=session.briefing,
+                    answer_state=previous_state,
                 )
             else:
                 pack = self.router.build_pack(
@@ -210,6 +211,7 @@ class InterviewTrainerService:
                 active_project_ids=[item.ref_id for item in pack.project_refs],
                 active_module_ids=[item.ref_id for item in pack.module_refs],
                 question=decision.locked_question,
+                used_hook_ids=[item.ref_id for item in pack.hook_refs],
             )
             self.answer_states[session_id] = answer_state
             session.answer_history[decision.turn_id] = {

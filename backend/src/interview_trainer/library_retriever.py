@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .answer_control import AnswerPlan
+from .answer_control import AnswerPlan, AnswerState
 from .library_types import CompiledBundlePayload, MetricEvidence, RetrievalUnit
 from .types import EvidenceRef, ProjectInterviewPack
 
@@ -28,6 +28,7 @@ def _dedupe_refs(refs: list[EvidenceRef]) -> list[EvidenceRef]:
 @dataclass(slots=True)
 class RetrievalSelection:
     retrieval_refs: list[EvidenceRef] = field(default_factory=list)
+    hook_refs: list[EvidenceRef] = field(default_factory=list)
     evidence_refs: list[EvidenceRef] = field(default_factory=list)
     project_refs: list[EvidenceRef] = field(default_factory=list)
     module_refs: list[EvidenceRef] = field(default_factory=list)
@@ -41,8 +42,9 @@ class LibraryRetriever:
         question: str,
         plan: AnswerPlan,
         bundle: CompiledBundlePayload,
+        answer_state: AnswerState | None = None,
     ) -> RetrievalSelection:
-        matched_units = self._match_units(question=question, plan=plan, bundle=bundle)
+        matched_units = self._match_units(question=question, plan=plan, bundle=bundle, answer_state=answer_state)
         selected_projects = self._select_projects(question=question, units=matched_units, bundle=bundle)
         retrieval_refs = [
             EvidenceRef(
@@ -53,6 +55,7 @@ class LibraryRetriever:
             )
             for unit in matched_units
         ]
+        hook_refs = self._collect_hook_refs(plan=plan, units=matched_units, answer_state=answer_state)
         evidence_refs = self._collect_evidence_refs(plan=plan, units=matched_units, bundle=bundle)
         project_refs = [
             EvidenceRef(
@@ -72,6 +75,7 @@ class LibraryRetriever:
         )
         return RetrievalSelection(
             retrieval_refs=_dedupe_refs(retrieval_refs[:3]),
+            hook_refs=_dedupe_refs(hook_refs[:1]),
             evidence_refs=_dedupe_refs(evidence_refs[:4]),
             project_refs=_dedupe_refs(project_refs[:2]),
             module_refs=_dedupe_refs(module_refs[:3]),
@@ -84,8 +88,10 @@ class LibraryRetriever:
         question: str,
         plan: AnswerPlan,
         bundle: CompiledBundlePayload,
+        answer_state: AnswerState | None,
     ) -> list[RetrievalUnit]:
         normalized = question.lower()
+        used_hook_ids = set(answer_state.used_hook_ids) if answer_state else set()
         scored: list[tuple[int, RetrievalUnit]] = []
         for unit in bundle.retrieval_units:
             score = 0
@@ -97,6 +103,9 @@ class LibraryRetriever:
                 score += 2
             if any(claim.lower() in normalized for claim in unit.safe_claims if claim):
                 score += 1
+            if plan.allow_hook and unit.hooks:
+                score += 2
+                score += 3 if unit.unit_id not in used_hook_ids else -3
             if score > 0:
                 scored.append((score, unit))
         if not scored:
@@ -109,6 +118,44 @@ class LibraryRetriever:
             scored = [(1, unit) for unit in bundle.retrieval_units[:2]]
         scored.sort(key=lambda item: item[0], reverse=True)
         return [unit for _, unit in scored[:3]]
+
+    def _collect_hook_refs(
+        self,
+        *,
+        plan: AnswerPlan,
+        units: list[RetrievalUnit],
+        answer_state: AnswerState | None,
+    ) -> list[EvidenceRef]:
+        if not plan.allow_hook:
+            return []
+        used_hook_ids = set(answer_state.used_hook_ids) if answer_state else set()
+        refs: list[EvidenceRef] = []
+        for unit in units:
+            if not unit.hooks:
+                continue
+            if unit.unit_id in used_hook_ids:
+                continue
+            refs.append(
+                EvidenceRef(
+                    ref_id=unit.unit_id,
+                    label=unit.hooks[0],
+                    kind="hook",
+                    snippet="unused hook",
+                )
+            )
+        if refs:
+            return refs
+        for unit in units:
+            if unit.hooks:
+                return [
+                    EvidenceRef(
+                        ref_id=unit.unit_id,
+                        label=unit.hooks[0],
+                        kind="hook",
+                        snippet="reused hook",
+                    )
+                ]
+        return []
 
     def _select_projects(
         self,

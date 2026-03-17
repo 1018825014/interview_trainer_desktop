@@ -194,6 +194,7 @@ class TemplateLLMProvider:
         refs = (
             pack.profile_refs
             + pack.retrieval_refs
+            + pack.hook_refs
             + pack.evidence_refs
             + pack.project_refs
             + pack.module_refs
@@ -206,6 +207,7 @@ class TemplateLLMProvider:
         refs = (
             pack.profile_refs
             + pack.retrieval_refs
+            + pack.hook_refs
             + pack.evidence_refs
             + pack.project_refs
             + pack.module_refs
@@ -327,6 +329,7 @@ class OpenAIChatProvider:
                 for ref in (
                     pack.profile_refs
                     + pack.retrieval_refs
+                    + pack.hook_refs
                     + pack.evidence_refs
                     + pack.project_refs
                     + pack.module_refs
