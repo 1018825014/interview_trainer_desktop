@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def _first_non_empty(*values: str) -> str:
@@ -10,6 +10,10 @@ def _first_non_empty(*values: str) -> str:
         if text:
             return text
     return ""
+
+
+def _split_csv(raw_value: str) -> list[str]:
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
 
 
 @dataclass(slots=True)
@@ -128,6 +132,12 @@ class TranscriptionSettings:
     provider: str = "template"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
+    alibaba_api_key: str = ""
+    alibaba_ws_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+    alibaba_app_key: str = ""
+    alibaba_workspace: str = ""
+    alibaba_vocabulary_id: str = ""
+    alibaba_hotwords: list[str] = field(default_factory=list)
     model: str = "gpt-4o-mini-transcribe"
     realtime_ws_url: str = ""
     realtime_input_sample_rate: int = 24000
@@ -160,6 +170,22 @@ class TranscriptionSettings:
             provider=os.getenv("INTERVIEW_TRAINER_ASR_PROVIDER", "template").strip().lower() or "template",
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            alibaba_api_key=_first_non_empty(
+                os.getenv("INTERVIEW_TRAINER_ALIBABA_API_KEY", ""),
+                os.getenv("DASHSCOPE_API_KEY", ""),
+            ),
+            alibaba_ws_url=(
+                _first_non_empty(
+                    os.getenv("INTERVIEW_TRAINER_ALIBABA_WS_URL", ""),
+                    os.getenv("INTERVIEW_TRAINER_ASR_REALTIME_URL", ""),
+                    "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+                )
+                or "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+            ).rstrip("/"),
+            alibaba_app_key=os.getenv("INTERVIEW_TRAINER_ALIBABA_APP_KEY", "").strip(),
+            alibaba_workspace=os.getenv("INTERVIEW_TRAINER_ALIBABA_WORKSPACE", "").strip(),
+            alibaba_vocabulary_id=os.getenv("INTERVIEW_TRAINER_ALIBABA_VOCABULARY_ID", "").strip(),
+            alibaba_hotwords=_split_csv(os.getenv("INTERVIEW_TRAINER_ALIBABA_HOTWORDS", "")),
             model=(
                 os.getenv("INTERVIEW_TRAINER_ASR_MODEL", "gpt-4o-mini-transcribe").strip()
                 or "gpt-4o-mini-transcribe"
@@ -197,3 +223,11 @@ class TranscriptionSettings:
     @property
     def use_openai_realtime(self) -> bool:
         return self.provider == "openai_realtime" and bool(self.openai_api_key)
+
+    @property
+    def use_alibaba_realtime(self) -> bool:
+        return self.provider == "alibaba_realtime" and bool(self.alibaba_api_key)
+
+    @property
+    def use_realtime_stream(self) -> bool:
+        return self.use_openai_realtime or self.use_alibaba_realtime

@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest import mock
 
-from interview_trainer.config import GenerationSettings
+from interview_trainer.config import GenerationSettings, TranscriptionSettings
 
 
 class GenerationSettingsTests(unittest.TestCase):
@@ -69,6 +69,36 @@ class GenerationSettingsTests(unittest.TestCase):
         self.assertEqual(settings.smart_base_url, "https://smart.example/v1")
         self.assertEqual(settings.smart_request_timeout_s, 45.0)
         self.assertTrue(settings.smart_lane.use_openai)
+
+
+class TranscriptionSettingsTests(unittest.TestCase):
+    def test_transcription_settings_read_alibaba_realtime_env_vars(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_ASR_PROVIDER": "alibaba_realtime",
+            "INTERVIEW_TRAINER_ASR_MODEL": "fun-asr-realtime-2026-02-28",
+            "INTERVIEW_TRAINER_ASR_LANGUAGE": "zh",
+            "INTERVIEW_TRAINER_ALIBABA_API_KEY": "dash-key",
+            "INTERVIEW_TRAINER_ALIBABA_WS_URL": "wss://dashscope.aliyuncs.com/api-ws/v1/inference/",
+            "INTERVIEW_TRAINER_ALIBABA_APP_KEY": "app-key",
+            "INTERVIEW_TRAINER_ALIBABA_VOCABULARY_ID": "vocab-agent-terms",
+            "INTERVIEW_TRAINER_ALIBABA_HOTWORDS": "RAG,MCP,embedding,reranker,tool calling",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            settings = TranscriptionSettings.from_env()
+
+        self.assertEqual(settings.provider, "alibaba_realtime")
+        self.assertEqual(settings.model, "fun-asr-realtime-2026-02-28")
+        self.assertEqual(settings.language, "zh")
+        self.assertEqual(settings.alibaba_api_key, "dash-key")
+        self.assertEqual(settings.alibaba_ws_url, "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
+        self.assertEqual(settings.alibaba_app_key, "app-key")
+        self.assertEqual(settings.alibaba_vocabulary_id, "vocab-agent-terms")
+        self.assertEqual(
+            settings.alibaba_hotwords,
+            ["RAG", "MCP", "embedding", "reranker", "tool calling"],
+        )
+        self.assertTrue(settings.use_alibaba_realtime)
+        self.assertTrue(settings.use_realtime_stream)
 
 
 if __name__ == "__main__":
