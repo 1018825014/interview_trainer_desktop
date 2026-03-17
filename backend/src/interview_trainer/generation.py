@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 from urllib import error, request
 
+from .answer_control import AnswerPlan, AnswerState
 from .config import GenerationLaneSettings, GenerationSettings
 from .prompts import PromptBuilder
 from .types import AnswerDraft, CompiledKnowledge, ContextRoute, KnowledgePack, SessionBriefing
@@ -23,6 +24,8 @@ class LLMProvider(Protocol):
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
         stream_state: StarterStreamState | None = None,
     ) -> AnswerDraft: ...
 
@@ -35,6 +38,8 @@ class LLMProvider(Protocol):
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
     ) -> AnswerDraft: ...
 
 
@@ -102,9 +107,12 @@ class TemplateLLMProvider:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
         stream_state: StarterStreamState | None = None,
     ) -> AnswerDraft:
         del stream_state
+        del answer_state
         focus = self._focus_phrase(pack, briefing)
         history_hint = ""
         if candidate_history:
@@ -135,6 +143,8 @@ class TemplateLLMProvider:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
     ) -> AnswerDraft:
         evidence = self._evidence_labels(pack)
         route_reason = route.reason.rstrip("。！？!? ")
@@ -212,6 +222,8 @@ class OpenAIChatProvider:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
         stream_state: StarterStreamState | None = None,
     ) -> AnswerDraft:
         return self._generate(
@@ -222,6 +234,8 @@ class OpenAIChatProvider:
             pack=pack,
             briefing=briefing,
             candidate_history=candidate_history,
+            answer_plan=answer_plan,
+            answer_state=answer_state,
             stream_state=stream_state,
         )
 
@@ -234,6 +248,8 @@ class OpenAIChatProvider:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
     ) -> AnswerDraft:
         return self._generate(
             turn_id=turn_id,
@@ -243,6 +259,8 @@ class OpenAIChatProvider:
             pack=pack,
             briefing=briefing,
             candidate_history=candidate_history,
+            answer_plan=answer_plan,
+            answer_state=answer_state,
             stream_state=None,
         )
 
@@ -256,6 +274,8 @@ class OpenAIChatProvider:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None,
+        answer_state: AnswerState | None,
         stream_state: StarterStreamState | None,
     ) -> AnswerDraft:
         messages = self.prompt_builder.build_messages(
@@ -265,6 +285,8 @@ class OpenAIChatProvider:
             pack=pack,
             briefing=briefing,
             candidate_history=candidate_history,
+            answer_plan=answer_plan,
+            answer_state=answer_state,
         )
         payload = {
             "model": self.endpoint.model,
@@ -464,6 +486,8 @@ class DualDraftComposer:
         knowledge: CompiledKnowledge,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
     ) -> DraftFutures:
         del knowledge
         starter_stream_state = StarterStreamState()
@@ -474,6 +498,8 @@ class DualDraftComposer:
             "pack": pack,
             "briefing": briefing,
             "candidate_history": candidate_history,
+            "answer_plan": answer_plan,
+            "answer_state": answer_state,
         }
         return DraftFutures(
             turn_id=turn_id,
@@ -506,6 +532,8 @@ class DualDraftComposer:
         knowledge: CompiledKnowledge,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
     ) -> dict[str, AnswerDraft]:
         futures = self.start(
             turn_id=turn_id,
@@ -515,6 +543,8 @@ class DualDraftComposer:
             knowledge=knowledge,
             briefing=briefing,
             candidate_history=candidate_history,
+            answer_plan=answer_plan,
+            answer_state=answer_state,
         )
         starter = futures.starter_future.result().draft
         full = futures.full_future.result().draft

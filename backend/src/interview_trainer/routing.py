@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from .answer_control import AnswerPlan
+
 from .types import (
     CompiledKnowledge,
     ContextMode,
@@ -26,6 +28,18 @@ PROJECT_KEYWORDS = {
     "失败",
     "取舍",
 }
+
+PROJECT_KEYWORDS.update(
+    {
+        "project",
+        "architecture",
+        "module",
+        "implementation",
+        "tradeoff",
+        "performance",
+        "failure",
+    }
+)
 
 
 ROLE_KEYWORDS = {
@@ -94,6 +108,7 @@ class ContextRouter:
         question: str,
         route: ContextRoute,
         knowledge: CompiledKnowledge,
+        answer_plan: AnswerPlan | None = None,
     ) -> KnowledgePack:
         project_refs: list[EvidenceRef] = []
         module_refs: list[EvidenceRef] = []
@@ -111,7 +126,7 @@ class ContextRouter:
                 )
             )
             module_refs.extend(self._match_modules(question, project))
-            if self._looks_like_code_detail(question):
+            if self._should_include_code(question, answer_plan):
                 code_refs.extend(self._match_code(question, project))
 
         if route.mode in {ContextMode.ROLE, ContextMode.HYBRID, ContextMode.GENERIC}:
@@ -141,6 +156,11 @@ class ContextRouter:
             code_refs=code_refs[:3],
             role_refs=role_refs[:3],
         )
+
+    def _should_include_code(self, question: str, answer_plan: AnswerPlan | None) -> bool:
+        if answer_plan and answer_plan.need_code_evidence:
+            return True
+        return self._looks_like_code_detail(question)
 
     def _matches_project(self, question: str, projects: Iterable[ProjectInterviewPack]) -> ProjectInterviewPack | None:
         normalized = question.lower()

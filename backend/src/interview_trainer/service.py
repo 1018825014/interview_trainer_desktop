@@ -4,6 +4,7 @@ import threading
 from dataclasses import asdict
 from uuid import uuid4
 
+from .answer_control import AnswerController, AnswerState
 from .briefing import BriefingBuilder
 from .config import GenerationSettings
 from .corrections import TerminologyCorrector
@@ -28,6 +29,7 @@ class InterviewTrainerService:
         *,
         knowledge_compiler: KnowledgeCompiler | None = None,
         router: ContextRouter | None = None,
+        answer_controller: AnswerController | None = None,
         briefing_builder: BriefingBuilder | None = None,
         composer: DualDraftComposer | None = None,
         settings: GenerationSettings | None = None,
@@ -35,11 +37,13 @@ class InterviewTrainerService:
         self.settings = settings or GenerationSettings.from_env()
         self.knowledge_compiler = knowledge_compiler or KnowledgeCompiler()
         self.router = router or ContextRouter()
+        self.answer_controller = answer_controller or AnswerController()
         self.briefing_builder = briefing_builder or BriefingBuilder()
         self.composer = composer or build_dual_draft_composer(self.settings)
         self.sessions: dict[str, InterviewSession] = {}
         self.turn_managers: dict[str, TurnManager] = {}
         self.pending_answer_jobs: dict[str, dict[str, DraftFutures]] = {}
+        self.answer_states: dict[str, AnswerState] = {}
         self._lock = threading.RLock()
 
     def compile_knowledge(self, payload: dict) -> dict:
@@ -64,6 +68,7 @@ class InterviewTrainerService:
             )
             self.turn_managers[session_id] = TurnManager()
             self.pending_answer_jobs[session_id] = {}
+            self.answer_states[session_id] = AnswerState()
             return {
                 "session_id": session_id,
                 "briefing": asdict(briefing),
@@ -171,11 +176,35 @@ class InterviewTrainerService:
 
         if decision.turn_id not in session.answer_history:
             route = self.router.route(decision.locked_question, session.knowledge, session.briefing)
-            pack = self.router.build_pack(decision.locked_question, route, session.knowledge)
+            provisional_pack = self.router.build_pack(decision.locked_question, route, session.knowledge)
+            previous_state = self.answer_states.get(session_id, AnswerState())
+            answer_plan = self.answer_controller.build_plan(
+                question=decision.locked_question,
+                route_mode=route.mode.value,
+                active_project_ids=[item.ref_id for item in provisional_pack.project_refs],
+                active_module_ids=[item.ref_id for item in provisional_pack.module_refs],
+                previous_state=previous_state,
+            )
+            pack = self.router.build_pack(
+                decision.locked_question,
+                route,
+                session.knowledge,
+                answer_plan=answer_plan,
+            )
+            answer_state = self.answer_controller.advance_state(
+                previous_state=previous_state,
+                plan=answer_plan,
+                active_project_ids=[item.ref_id for item in pack.project_refs],
+                active_module_ids=[item.ref_id for item in pack.module_refs],
+                question=decision.locked_question,
+            )
+            self.answer_states[session_id] = answer_state
             session.answer_history[decision.turn_id] = {
                 "turn_id": decision.turn_id,
                 "question": decision.locked_question,
                 "route": asdict(route),
+                "answer_plan": asdict(answer_plan),
+                "answer_state": asdict(answer_state),
                 "pack": asdict(pack),
                 "status": AnswerStatus.PENDING.value,
                 "drafts": {},
@@ -194,6 +223,8 @@ class InterviewTrainerService:
                 knowledge=session.knowledge,
                 briefing=session.briefing,
                 candidate_history=session.actual_candidate_history,
+                answer_plan=answer_plan,
+                answer_state=answer_state,
             )
 
         self._collect_answer_update(session_id, session, decision.turn_id)

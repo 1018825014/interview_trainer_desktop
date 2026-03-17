@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `39/39` passing
+- Backend tests: `42/42` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -127,6 +127,7 @@ Recommended current setup:
   - Stage 2 backend library CRUD API
   - Stage 3 answer-oriented library compile layer
   - Stage 4 overlays, presets, bundles, and session-payload activation
+  - Stage 5 runtime answer-plan integration
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -229,8 +230,26 @@ Recommended current setup:
     - `test_library_api.py`
     - `test_service.py`
   - full backend unittest: `39/39` passing
+- Stage 5 implemented:
+  - added `AnswerController` with runtime objects:
+    - `AnswerPlan`
+    - `AnswerState`
+  - service now builds and stores plan/state for each generated answer turn
+  - current plan/state snapshots are returned inside answer payloads
+  - router can now bias pack assembly with `answer_plan`, including forcing code evidence when needed
+  - prompt builder now includes intent, retrieval priority, template, and active follow-up state in prompt context
+  - generation layer now accepts structured `answer_plan` and `answer_state` inputs end-to-end
+- New backend files added in Stage 5:
+  - `backend/src/interview_trainer/answer_control.py`
+  - `backend/tests/test_answer_control.py`
+- Stage 5 verification:
+  - targeted control tests:
+    - `test_answer_control.py`
+    - `test_routing.py`
+    - `test_service.py`
+  - full backend unittest: `42/42` passing
 - Recommended next implementation order:
-  1. runtime answer-plan integration
+  1. runtime retrieval unit-first and evidence-aware routing
   2. desktop library UI split and management flow
   3. richer indexing and evidence authoring surfaces
   4. bundle history and activation UX polish

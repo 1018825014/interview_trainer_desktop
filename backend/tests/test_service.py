@@ -72,6 +72,48 @@ class _StreamingStarterProvider:
 
 
 class InterviewTrainerServiceTests(unittest.TestCase):
+    def test_answer_payload_includes_answer_plan_and_state(self) -> None:
+        service = InterviewTrainerService(
+            composer=DualDraftComposer(
+                fast_provider=_DelayedProvider(delay_s=0.05, level="starter"),
+                smart_provider=_DelayedProvider(delay_s=0.2, level="full"),
+            )
+        )
+        session = service.create_session(
+            {
+                "knowledge": {
+                    "projects": [
+                        {
+                            "name": "AgentOps Console",
+                            "documents": [{"content": "Agent workflow builder with tracing and evaluation."}],
+                            "code_files": [{"path": "src/orchestrator/workflow.py", "content": "def run(): pass"}],
+                        }
+                    ]
+                },
+                "briefing": {"company": "Test", "business_context": "Agent", "job_description": "agent latency evaluation"},
+            }
+        )
+        session_id = session["session_id"]
+        service.handle_transcript(
+            session_id,
+            {
+                "speaker": "interviewer",
+                "text": "Introduce one agent project and the key tradeoffs.",
+                "final": True,
+                "confidence": 0.98,
+                "ts_start": 0.0,
+                "ts_end": 1.5,
+            },
+        )
+
+        response = service.tick_session(session_id, 2.6)
+        answer = response["answer"]
+
+        self.assertEqual(answer["answer_plan"]["intent"], "tradeoff_reasoning")
+        self.assertTrue(answer["answer_plan"]["allow_hook"])
+        self.assertEqual(answer["answer_state"]["active_project_id"], "agentops-console")
+        self.assertEqual(answer["answer_state"]["followup_thread"], "tradeoff_reasoning")
+
     def test_answer_generation_transitions_from_pending_to_complete(self) -> None:
         service = InterviewTrainerService(
             composer=DualDraftComposer(

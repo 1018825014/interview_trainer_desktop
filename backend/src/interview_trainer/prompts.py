@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .answer_control import AnswerPlan, AnswerState
 from .types import ContextRoute, KnowledgePack, SessionBriefing
 
 
@@ -13,6 +14,8 @@ class PromptBuilder:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
     ) -> list[dict[str, str]]:
         system = self._system_prompt(level)
         user = self._user_prompt(
@@ -22,6 +25,8 @@ class PromptBuilder:
             pack=pack,
             briefing=briefing,
             candidate_history=candidate_history,
+            answer_plan=answer_plan,
+            answer_state=answer_state,
         )
         return [
             {"role": "system", "content": system},
@@ -59,6 +64,8 @@ class PromptBuilder:
         pack: KnowledgePack,
         briefing: SessionBriefing,
         candidate_history: list[str],
+        answer_plan: AnswerPlan | None,
+        answer_state: AnswerState | None,
     ) -> str:
         candidate_context = candidate_history[-3:] if candidate_history else []
         return "\n".join(
@@ -72,6 +79,15 @@ class PromptBuilder:
                 f"JD focus topics: {', '.join(briefing.focus_topics) or 'N/A'}",
                 f"Priority projects: {', '.join(briefing.priority_projects) or 'N/A'}",
                 f"Style bias: {', '.join(briefing.style_bias)}",
+                f"Intent: {answer_plan.intent if answer_plan else 'N/A'}",
+                f"Retrieve priority: {', '.join(answer_plan.retrieve_priority) if answer_plan else 'N/A'}",
+                f"Answer template: {', '.join(answer_plan.answer_template) if answer_plan else 'N/A'}",
+                f"Need metrics: {answer_plan.need_metrics if answer_plan else False}",
+                f"Need code evidence: {answer_plan.need_code_evidence if answer_plan else False}",
+                f"Allow hook: {answer_plan.allow_hook if answer_plan else False}",
+                f"Active project id: {answer_state.active_project_id if answer_state else 'N/A'}",
+                f"Active module id: {answer_state.active_module_id if answer_state else 'N/A'}",
+                f"Follow-up thread: {answer_state.followup_thread if answer_state else 'N/A'}",
                 "Candidate already said:",
                 *([f"- {item}" for item in candidate_context] or ["- nothing yet"]),
                 "Evidence pack:",
