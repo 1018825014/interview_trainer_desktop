@@ -83,6 +83,19 @@ export interface LibraryManualRetrievalUnitRecord {
   safeClaims: string[];
 }
 
+export interface LibraryAuthoringTemplateRecord {
+  templateId: string;
+  name: string;
+  description: string;
+  sourceProjectId: string;
+  sourceProjectName: string;
+  manualEvidence: LibraryManualEvidenceRecord[];
+  manualMetrics: LibraryManualMetricRecord[];
+  manualRetrievalUnits: LibraryManualRetrievalUnitRecord[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface LibraryCompiledModuleCardRecord {
   moduleId: string;
   projectId: string;
@@ -339,6 +352,7 @@ export interface LibraryWorkspaceRecord {
   createdAt: number | null;
   updatedAt: number | null;
   knowledge: LibraryKnowledgeRecord;
+  authoringTemplates: LibraryAuthoringTemplateRecord[];
   overlays: LibraryOverlayRecord[];
   presets: LibraryPresetRecord[];
   compiledBundles: LibraryBundleSummaryRecord[];

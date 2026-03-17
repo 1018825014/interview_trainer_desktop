@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  applyLibraryAuthoringTemplateToProject,
   buildLibraryProjectAuthoringPackTemplate,
   buildPresetSessionPayload,
   compareLibraryBundles,
   compareLibraryPresets,
   compileLibraryWorkspace,
   cloneLibraryPreset,
+  createLibraryAuthoringTemplate,
   createLibraryProjectDocument,
   createLibraryOverlay,
   createLibraryPreset,
   createLibraryProject,
   createLibraryRoleDocument,
   createLibraryWorkspace,
+  deleteLibraryAuthoringTemplate,
   deleteLibraryDocument,
   deleteLibraryProject,
   getLibraryBundleDetail,
@@ -34,6 +37,7 @@ import {
 } from "../../api/library";
 import { sampleLibraryWorkspace } from "../../mock/sample";
 import type {
+  LibraryAuthoringTemplateRecord,
   LibraryBundleSummaryRecord,
   LibraryBundleComparisonRecord,
   LibraryBundleDetailRecord,
@@ -788,6 +792,30 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     );
   }
 
+  function replaceAuthoringTemplate(template: LibraryAuthoringTemplateRecord) {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            authoringTemplates: current.authoringTemplates.some((item) => item.templateId === template.templateId)
+              ? current.authoringTemplates.map((item) => (item.templateId === template.templateId ? template : item))
+              : [...current.authoringTemplates, template],
+          }
+        : current,
+    );
+  }
+
+  function removeAuthoringTemplate(templateId: string) {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            authoringTemplates: current.authoringTemplates.filter((item) => item.templateId !== templateId),
+          }
+        : current,
+    );
+  }
+
   async function handleSelectWorkspace(workspaceId: string) {
     if (!backendOnline) {
       const local = workspaceList.find((item) => item.workspaceId === workspaceId);
@@ -1109,6 +1137,69 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       setStatusMessage(`项目 ${selectedProject.name} 的批量 authoring pack 已应用。`);
     } catch (error) {
       setProjectAuthoringStatus(error instanceof Error ? error.message : "应用 authoring pack 失败。");
+    }
+  }
+
+  async function handleSaveAuthoringTemplate(payload: Record<string, unknown>) {
+    if (!backendOnline || !workspace || !selectedProject) {
+      setProjectAuthoringStatus("请先连接后端并选择项目。");
+      return;
+    }
+    try {
+      const template = await createLibraryAuthoringTemplate(
+        backendBaseUrl,
+        workspace.workspaceId,
+        payload,
+      );
+      replaceAuthoringTemplate(template);
+      setProjectAuthoringStatus(`已保存模板 ${template.name}。`);
+      setStatusMessage(`项目 ${selectedProject.name} 的作者模板已保存。`);
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "保存作者模板失败。");
+    }
+  }
+
+  async function handleApplySavedTemplate(
+    templateId: string,
+    mode: "replace" | "append",
+  ): Promise<LibraryProjectAuthoringPackRecord | null> {
+    if (!backendOnline || !selectedProject) {
+      setProjectAuthoringStatus("请先连接后端并选择项目。");
+      return null;
+    }
+    try {
+      const result = await applyLibraryAuthoringTemplateToProject(
+        backendBaseUrl,
+        selectedProject.projectId,
+        {
+          template_id: templateId,
+          mode,
+        },
+      );
+      setProjectAuthoringPack(result);
+      applyProjectAuthoringPack(selectedProject.projectId, result);
+      setProjectAuthoringStatus(
+        mode === "append" ? "已将模板追加到当前 authoring draft。" : "已用模板替换当前 authoring draft。",
+      );
+      setStatusMessage(`项目 ${selectedProject.name} 已应用作者模板。`);
+      return result;
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "应用作者模板失败。");
+      return null;
+    }
+  }
+
+  async function handleDeleteAuthoringTemplate(templateId: string) {
+    if (!backendOnline) {
+      setProjectAuthoringStatus("请先连接后端。");
+      return;
+    }
+    try {
+      await deleteLibraryAuthoringTemplate(backendBaseUrl, templateId);
+      removeAuthoringTemplate(templateId);
+      setProjectAuthoringStatus("已删除作者模板。");
+    } catch (error) {
+      setProjectAuthoringStatus(error instanceof Error ? error.message : "删除作者模板失败。");
     }
   }
 
@@ -1646,6 +1737,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           {selection?.type === "project" ? (
             <ProjectEditor
               project={selectedProject}
+              authoringTemplates={workspace?.authoringTemplates ?? []}
               authoringPack={projectAuthoringPack}
               authoringStatus={projectAuthoringStatus}
               compiledPreview={projectCompiledPreview}
@@ -1653,6 +1745,9 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
               onBuildAuthoringTemplate={handleBuildProjectAuthoringTemplate}
               onPreviewAuthoringPack={handlePreviewProjectAuthoringPack}
               onApplyAuthoringPack={handleApplyProjectAuthoringPack}
+              onSaveAuthoringTemplate={handleSaveAuthoringTemplate}
+              onApplySavedTemplate={handleApplySavedTemplate}
+              onDeleteAuthoringTemplate={handleDeleteAuthoringTemplate}
               onCreateDocument={handleCreateProjectDocument}
               onSaveDocument={handleSaveProjectDocument}
               onDeleteDocument={handleDeleteProjectDocument}

@@ -590,6 +590,37 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `74/74` passing
+- Stage 19 implemented:
+  - added reusable workspace-level authoring templates so one project's hand-crafted interview material can be saved and reused across other projects
+  - new backend APIs:
+    - `GET /api/library/workspaces/{workspace_id}/authoring-templates`
+    - `POST /api/library/workspaces/{workspace_id}/authoring-templates`
+    - `PUT /api/library/authoring-templates/{template_id}`
+    - `DELETE /api/library/authoring-templates/{template_id}`
+    - `POST /api/library/projects/{project_id}/authoring-pack/apply-template`
+  - workspace persistence now stores `authoring_templates` alongside overlays / presets / bundles and upgrades older saved workspaces automatically
+  - each authoring template keeps:
+    - template id / name / description
+    - source project id and resolved source project name
+    - manual evidence / manual metrics / manual retrieval units
+    - created / updated timestamps
+  - templates can be applied to another project in:
+    - `replace` mode
+    - `append` mode
+  - applying a template reuses the existing authoring-pack validation path, updates the target project's manual materials, and invalidates compiled artifacts so the next compile reflects the imported content
+  - desktop project editing now has a saved-template panel inside the batch authoring area:
+    - save the current authoring draft as a workspace template
+    - inspect template counts
+    - apply a template with replace / append
+    - delete a template
+  - this turns authoring packs into reusable interview-material building blocks instead of one-off per-project drafts
+- Stage 19 verification:
+  - targeted backend tests:
+    - `tests.test_library_api -v`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `75/75` passing
 - Recommended next implementation order:
   1. larger-library workspace preview UX polish
   2. preset workflow refinement:

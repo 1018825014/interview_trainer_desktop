@@ -496,6 +496,88 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(stale["stale_project_names"], ["Agent Console"])
         self.assertEqual(stale["latest_bundle"]["overlay_name"], "Alibaba")
 
+    def test_library_authoring_templates_can_be_saved_and_applied_across_projects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            source_project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-evidence-1",
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 interview-style queries locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_metrics": [
+                        {
+                            "evidence_id": "manual-metric-1",
+                            "metric_name": "first_token_latency",
+                            "metric_value": "850ms",
+                            "baseline": "1.7s",
+                            "method": "local benchmark",
+                            "environment": "sqlite + fast model",
+                            "source_note": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-1",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this architecture?"],
+                            "short_answer": "I optimized for debuggability first.",
+                            "long_answer": "I chose smaller components so I could reason about retrieval failures quickly.",
+                            "key_points": ["debuggability", "latency"],
+                            "supporting_refs": ["manual-evidence-1", "manual-metric-1"],
+                            "hooks": ["The retrieval router was the hardest part."],
+                            "safe_claims": ["The architecture was chosen for debuggability."],
+                        }
+                    ],
+                },
+            ).json()
+            target_project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Bundle Ops"},
+            ).json()
+
+            created_template = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/authoring-templates",
+                json={
+                    "name": "Tradeoff Pack",
+                    "description": "Reusable tradeoff template",
+                    "source_project_id": source_project["project_id"],
+                    "manual_evidence": source_project["manual_evidence"],
+                    "manual_metrics": source_project["manual_metrics"],
+                    "manual_retrieval_units": source_project["manual_retrieval_units"],
+                },
+            ).json()
+            applied_pack = client.post(
+                f"/api/library/projects/{target_project['project_id']}/authoring-pack/apply-template",
+                json={
+                    "template_id": created_template["template_id"],
+                    "mode": "replace",
+                },
+            ).json()
+            refreshed_workspace = client.get(
+                f"/api/library/workspaces/{workspace['workspace_id']}"
+            ).json()
+            refreshed_target = client.get(
+                f"/api/library/projects/{target_project['project_id']}"
+            ).json()
+
+        self.assertEqual(created_template["name"], "Tradeoff Pack")
+        self.assertEqual(created_template["source_project_id"], source_project["project_id"])
+        self.assertEqual(len(refreshed_workspace["authoring_templates"]), 1)
+        self.assertEqual(applied_pack["summary"]["manual_evidence_count"], 1)
+        self.assertEqual(applied_pack["summary"]["manual_metric_count"], 1)
+        self.assertEqual(applied_pack["summary"]["manual_retrieval_unit_count"], 1)
+        self.assertEqual(refreshed_target["manual_evidence"][0]["title"], "Load Test")
+        self.assertEqual(refreshed_target["manual_retrieval_units"][0]["unit_id"], "manual-ru-1")
+
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

@@ -1,5 +1,6 @@
 import { requestJson } from "./client";
 import type {
+  LibraryAuthoringTemplateRecord,
   LibraryAuthoringSupportingRefRecord,
   LibraryAuthoringValidationRecord,
   LibraryBriefingPayload,
@@ -291,6 +292,23 @@ function mapPresetLatestBundleStatus(raw: any): LibraryPresetLatestBundleStatusR
   };
 }
 
+function mapAuthoringTemplate(raw: any): LibraryAuthoringTemplateRecord {
+  return {
+    templateId: asString(raw?.template_id),
+    name: asString(raw?.name, "Authoring Template"),
+    description: asString(raw?.description),
+    sourceProjectId: asString(raw?.source_project_id),
+    sourceProjectName: asString(raw?.source_project_name),
+    manualEvidence: Array.isArray(raw?.manual_evidence) ? raw.manual_evidence.map(mapManualEvidence) : [],
+    manualMetrics: Array.isArray(raw?.manual_metrics) ? raw.manual_metrics.map(mapManualMetric) : [],
+    manualRetrievalUnits: Array.isArray(raw?.manual_retrieval_units)
+      ? raw.manual_retrieval_units.map(mapManualRetrievalUnit)
+      : [],
+    createdAt: asNumber(raw?.created_at),
+    updatedAt: asNumber(raw?.updated_at),
+  };
+}
+
 function mapCompiledModuleCard(raw: any): LibraryCompiledModuleCardRecord {
   return {
     moduleId: asString(raw?.module_id),
@@ -433,6 +451,7 @@ function mapWorkspace(raw: any): LibraryWorkspaceRecord {
     createdAt: raw?.created_at ?? null,
     updatedAt: raw?.updated_at ?? null,
     knowledge: mapKnowledge(raw?.knowledge),
+    authoringTemplates: Array.isArray(raw?.authoring_templates) ? raw.authoring_templates.map(mapAuthoringTemplate) : [],
     overlays: Array.isArray(raw?.overlays) ? raw.overlays.map(mapOverlay) : [],
     presets: Array.isArray(raw?.presets) ? raw.presets.map(mapPreset) : [],
     compiledBundles: Array.isArray(raw?.compiled_bundles) ? raw.compiled_bundles.map(mapBundleSummary) : [],
@@ -636,6 +655,52 @@ export async function updateLibraryProjectAuthoringPack(
     method: "PUT",
     payload,
     errorMessage: "Failed to update project authoring pack",
+  });
+  return mapProjectAuthoringPack(response);
+}
+
+export async function createLibraryAuthoringTemplate(
+  baseUrl: string,
+  workspaceId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryAuthoringTemplateRecord> {
+  const template = await requestJson<any>(`${baseUrl}/api/library/workspaces/${workspaceId}/authoring-templates`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to create authoring template",
+  });
+  return mapAuthoringTemplate(template);
+}
+
+export async function updateLibraryAuthoringTemplate(
+  baseUrl: string,
+  templateId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryAuthoringTemplateRecord> {
+  const template = await requestJson<any>(`${baseUrl}/api/library/authoring-templates/${templateId}`, {
+    method: "PUT",
+    payload,
+    errorMessage: "Failed to update authoring template",
+  });
+  return mapAuthoringTemplate(template);
+}
+
+export async function deleteLibraryAuthoringTemplate(baseUrl: string, templateId: string): Promise<void> {
+  await requestJson(`${baseUrl}/api/library/authoring-templates/${templateId}`, {
+    method: "DELETE",
+    errorMessage: "Failed to delete authoring template",
+  });
+}
+
+export async function applyLibraryAuthoringTemplateToProject(
+  baseUrl: string,
+  projectId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryProjectAuthoringPackRecord> {
+  const response = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/authoring-pack/apply-template`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to apply authoring template",
   });
   return mapProjectAuthoringPack(response);
 }

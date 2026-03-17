@@ -84,6 +84,7 @@ class WorkspaceManager:
             "workspace_id": workspace_id,
             "name": _clean_text(payload.get("name")) or "Interview Workspace",
             "knowledge": self._normalize_knowledge_payload(payload.get("knowledge", {})),
+            "authoring_templates": [],
             "overlays": [],
             "presets": [],
             "compiled_bundles": [],
@@ -153,6 +154,98 @@ class WorkspaceManager:
             manual_metrics=metrics,
             manual_retrieval_units=units,
         )
+
+    def list_authoring_templates(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        return {
+            "authoring_templates": [
+                self._serialize_authoring_template(workspace, template)
+                for template in workspace.get("authoring_templates", [])
+            ]
+        }
+
+    def create_authoring_template(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        template = self._normalize_authoring_template(payload)
+        workspace.setdefault("authoring_templates", []).append(template)
+        workspace["updated_at"] = float(template.get("updated_at", time.time()) or time.time())
+        self.repository.save_workspace(workspace)
+        return self._serialize_authoring_template(workspace, template)
+
+    def update_authoring_template(self, template_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, template = self._find_authoring_template(template_id)
+        if "name" in payload:
+            template["name"] = _clean_text(payload.get("name")) or template["name"]
+        if "description" in payload:
+            template["description"] = _clean_text(payload.get("description"))
+        if "source_project_id" in payload:
+            template["source_project_id"] = _clean_text(payload.get("source_project_id"))
+        if any(key in payload for key in ("manual_evidence", "manual_metrics", "manual_retrieval_units")):
+            evidence, metrics, units = self._normalize_project_authoring_pack_payload(
+                {
+                    "manual_evidence": payload.get("manual_evidence", template.get("manual_evidence", [])),
+                    "manual_metrics": payload.get("manual_metrics", template.get("manual_metrics", [])),
+                    "manual_retrieval_units": payload.get(
+                        "manual_retrieval_units",
+                        template.get("manual_retrieval_units", []),
+                    ),
+                }
+            )
+            template["manual_evidence"] = evidence
+            template["manual_metrics"] = metrics
+            template["manual_retrieval_units"] = units
+        template["updated_at"] = time.time()
+        workspace["updated_at"] = template["updated_at"]
+        self.repository.save_workspace(workspace)
+        return self._serialize_authoring_template(workspace, template)
+
+    def delete_authoring_template(self, template_id: str) -> dict[str, str]:
+        workspace, template = self._find_authoring_template(template_id)
+        workspace["authoring_templates"] = [
+            item for item in workspace.get("authoring_templates", []) if item is not template
+        ]
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return {"status": "deleted", "template_id": template_id}
+
+    def apply_authoring_template_to_project(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, project = self._find_project(project_id)
+        template_workspace, template = self._find_authoring_template(_clean_text(payload.get("template_id")))
+        if workspace["workspace_id"] != template_workspace["workspace_id"]:
+            raise ValueError("Authoring template must belong to the same workspace.")
+
+        mode = _clean_text(payload.get("mode")).lower() or "replace"
+        if mode not in {"replace", "append"}:
+            raise ValueError("Unsupported authoring template apply mode.")
+
+        evidence = [dict(item) for item in template.get("manual_evidence", []) if isinstance(item, dict)]
+        metrics = [dict(item) for item in template.get("manual_metrics", []) if isinstance(item, dict)]
+        units = [dict(item) for item in template.get("manual_retrieval_units", []) if isinstance(item, dict)]
+        if mode == "append":
+            existing_evidence, existing_metrics, existing_units = self._project_authoring_pack_parts(project)
+            evidence = self._merge_authoring_items(existing_evidence, evidence, key="evidence_id")
+            metrics = self._merge_authoring_items(existing_metrics, metrics, key="evidence_id")
+            units = self._merge_authoring_items(existing_units, units, key="unit_id")
+
+        response = self._build_project_authoring_pack_response(
+            project,
+            manual_evidence=evidence,
+            manual_metrics=metrics,
+            manual_retrieval_units=units,
+        )
+        validation = response.get("validation", {})
+        if not bool(validation.get("valid")):
+            raise ValueError("; ".join(validation.get("errors", [])) or "Invalid authoring template application.")
+        project["manual_evidence"] = evidence
+        project["manual_metrics"] = metrics
+        project["manual_retrieval_units"] = units
+        self._invalidate_compiled_artifacts(workspace)
+        workspace["updated_at"] = self._touch_project(project)
+        self.repository.save_workspace(workspace)
+        response["project"] = self._serialize_project(project)
+        response["template"] = self._serialize_authoring_template(workspace, template)
+        response["mode"] = mode
+        return response
 
     def build_project_authoring_pack_template(
         self,
@@ -840,6 +933,10 @@ class WorkspaceManager:
                     for item in workspace["knowledge"].get("role_documents", [])
                 ],
             },
+            "authoring_templates": [
+                self._serialize_authoring_template(workspace, template)
+                for template in workspace.get("authoring_templates", [])
+            ],
             "overlays": [self._serialize_overlay(item) for item in workspace.get("overlays", [])],
             "presets": [self._serialize_preset(item) for item in workspace.get("presets", [])],
             "compiled_bundles": [
@@ -978,6 +1075,58 @@ class WorkspaceManager:
             "documents": [self._serialize_document(item) for item in project.get("documents", [])],
             "code_files": [self._serialize_code_file(item) for item in project.get("code_files", [])],
             "updated_at": float(project.get("updated_at", 0.0) or 0.0),
+        }
+
+    def _normalize_authoring_template(self, payload: dict[str, Any]) -> dict[str, Any]:
+        now = time.time()
+        evidence, metrics, units = self._normalize_project_authoring_pack_payload(payload)
+        return {
+            "template_id": _clean_text(payload.get("template_id")) or str(uuid4()),
+            "name": _clean_text(payload.get("name")) or "Authoring Template",
+            "description": _clean_text(payload.get("description")),
+            "source_project_id": _clean_text(payload.get("source_project_id")),
+            "manual_evidence": evidence,
+            "manual_metrics": metrics,
+            "manual_retrieval_units": units,
+            "created_at": float(payload.get("created_at", now) or now),
+            "updated_at": float(payload.get("updated_at", now) or now),
+        }
+
+    def _serialize_authoring_template(
+        self,
+        workspace: dict[str, Any],
+        template: dict[str, Any],
+    ) -> dict[str, Any]:
+        source_project_name = ""
+        source_project_id = _clean_text(template.get("source_project_id"))
+        if source_project_id:
+            for project in workspace.get("knowledge", {}).get("projects", []):
+                if _clean_text(project.get("project_id")) == source_project_id:
+                    source_project_name = _clean_text(project.get("name"))
+                    break
+        return {
+            "template_id": _clean_text(template.get("template_id")),
+            "name": _clean_text(template.get("name")) or "Authoring Template",
+            "description": _clean_text(template.get("description")),
+            "source_project_id": source_project_id,
+            "source_project_name": source_project_name,
+            "manual_evidence": [
+                self._serialize_manual_evidence(item)
+                for item in template.get("manual_evidence", [])
+                if isinstance(item, dict)
+            ],
+            "manual_metrics": [
+                self._serialize_manual_metric(item)
+                for item in template.get("manual_metrics", [])
+                if isinstance(item, dict)
+            ],
+            "manual_retrieval_units": [
+                self._serialize_manual_retrieval_unit(item)
+                for item in template.get("manual_retrieval_units", [])
+                if isinstance(item, dict)
+            ],
+            "created_at": float(template.get("created_at", 0.0) or 0.0),
+            "updated_at": float(template.get("updated_at", 0.0) or 0.0),
         }
 
     def _project_authoring_pack_parts(
@@ -1549,6 +1698,13 @@ class WorkspaceManager:
                     return workspace, preset
         raise KeyError(preset_id)
 
+    def _find_authoring_template(self, template_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        for workspace in self._workspaces.values():
+            for template in workspace.get("authoring_templates", []):
+                if _clean_text(template.get("template_id")) == template_id:
+                    return workspace, template
+        raise KeyError(template_id)
+
     def _latest_bundle_for_preset(self, workspace: dict[str, Any], preset_id: str) -> dict[str, Any] | None:
         matches = [
             bundle
@@ -1744,6 +1900,18 @@ class WorkspaceManager:
     def _upgrade_loaded_workspaces(self) -> None:
         changed = False
         for workspace in self._workspaces.values():
+            if "authoring_templates" not in workspace:
+                workspace["authoring_templates"] = []
+                changed = True
+            else:
+                normalized_templates = [
+                    self._normalize_authoring_template(template)
+                    for template in workspace.get("authoring_templates", [])
+                    if isinstance(template, dict)
+                ]
+                if normalized_templates != workspace.get("authoring_templates", []):
+                    workspace["authoring_templates"] = normalized_templates
+                    changed = True
             if "overlays" not in workspace:
                 workspace["overlays"] = []
                 changed = True
@@ -1796,6 +1964,9 @@ class WorkspaceManager:
             for project in workspace.get("knowledge", {}).get("projects", []):
                 if not _clean_text(project.get("project_id")):
                     project["project_id"] = str(uuid4())
+                    changed = True
+                if "updated_at" not in project:
+                    project["updated_at"] = time.time()
                     changed = True
                 for field in (
                     "pitch_30",

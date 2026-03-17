@@ -1,6 +1,7 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import type {
+  LibraryAuthoringTemplateRecord,
   LibraryCodeFileRecord,
   LibraryProjectAuthoringPackRecord,
   LibraryProjectCompiledPreviewRecord,
@@ -13,6 +14,7 @@ import type {
 
 interface ProjectEditorProps {
   project: LibraryProjectRecord | null;
+  authoringTemplates: LibraryAuthoringTemplateRecord[];
   authoringPack: LibraryProjectAuthoringPackRecord | null;
   authoringStatus: string;
   compiledPreview: LibraryProjectCompiledPreviewRecord | null;
@@ -20,6 +22,9 @@ interface ProjectEditorProps {
   onBuildAuthoringTemplate: (payload: Record<string, unknown>) => Promise<LibraryProjectAuthoringPackRecord | null>;
   onPreviewAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
   onApplyAuthoringPack: (payload: Record<string, unknown>) => Promise<void>;
+  onSaveAuthoringTemplate: (payload: Record<string, unknown>) => Promise<void>;
+  onApplySavedTemplate: (templateId: string, mode: "replace" | "append") => Promise<LibraryProjectAuthoringPackRecord | null>;
+  onDeleteAuthoringTemplate: (templateId: string) => Promise<void>;
   onCreateDocument: () => void;
   onSaveDocument: (document: LibraryDocumentRecord) => void;
   onDeleteDocument: (document: LibraryDocumentRecord) => void;
@@ -257,6 +262,7 @@ function deleteManualRetrievalUnit(project: LibraryProjectRecord, unitId: string
 
 export function ProjectEditor({
   project,
+  authoringTemplates,
   authoringPack,
   authoringStatus,
   compiledPreview,
@@ -264,6 +270,9 @@ export function ProjectEditor({
   onBuildAuthoringTemplate,
   onPreviewAuthoringPack,
   onApplyAuthoringPack,
+  onSaveAuthoringTemplate,
+  onApplySavedTemplate,
+  onDeleteAuthoringTemplate,
   onCreateDocument,
   onSaveDocument,
   onDeleteDocument,
@@ -272,11 +281,15 @@ export function ProjectEditor({
 }: ProjectEditorProps) {
   const [authoringDraft, setAuthoringDraft] = useState(() => buildAuthoringDraft(project));
   const [authoringDraftError, setAuthoringDraftError] = useState("");
+  const [templateNameDraft, setTemplateNameDraft] = useState("");
+  const [templateDescriptionDraft, setTemplateDescriptionDraft] = useState("");
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setAuthoringDraft(buildAuthoringDraft(project));
     setAuthoringDraftError("");
+    setTemplateNameDraft(project ? `${project.name} Template` : "");
+    setTemplateDescriptionDraft(project ? `${project.name} reusable authoring pack` : "");
   }, [project?.projectId]);
 
   function handlePreviewDraft() {
@@ -338,6 +351,29 @@ export function ProjectEditor({
       setAuthoringDraftError(error instanceof Error ? error.message : "Failed to import JSON file.");
     } finally {
       event.target.value = "";
+    }
+  }
+
+  async function handleSaveTemplate() {
+    const parsed = parseAuthoringDraft(authoringDraft);
+    if (!parsed.payload || !project) {
+      setAuthoringDraftError(parsed.error || "Project is required to save a template.");
+      return;
+    }
+    setAuthoringDraftError("");
+    await onSaveAuthoringTemplate({
+      name: templateNameDraft || `${project.name} Template`,
+      description: templateDescriptionDraft,
+      source_project_id: project.projectId,
+      ...parsed.payload,
+    });
+  }
+
+  async function handleApplySavedTemplate(templateId: string, mode: "replace" | "append") {
+    const pack = await onApplySavedTemplate(templateId, mode);
+    if (pack) {
+      setAuthoringDraft(buildAuthoringDraftFromPack(pack));
+      setAuthoringDraftError("");
     }
   }
 
@@ -647,6 +683,54 @@ export function ProjectEditor({
           Replace manual evidence, metrics, and retrieval units in one JSON payload. Use preview before apply so duplicate ids
           and missing supporting refs are caught early.
         </p>
+        <div className="meta-card">
+          <div className="panel-head compact">
+            <span>Saved Templates</span>
+            <strong>{authoringTemplates.length}</strong>
+          </div>
+          <label>
+            Template Name
+            <input value={templateNameDraft} onChange={(event) => setTemplateNameDraft(event.target.value)} />
+          </label>
+          <label>
+            Template Description
+            <input value={templateDescriptionDraft} onChange={(event) => setTemplateDescriptionDraft(event.target.value)} />
+          </label>
+          <div className="action-row">
+            <button className="ghost small" onClick={() => void handleSaveTemplate()}>
+              Save Current Draft As Template
+            </button>
+          </div>
+          {authoringTemplates.length === 0 ? (
+            <p className="library-empty">先把一个项目的回答素材沉淀成模板，后面就能快速复用到其他项目。</p>
+          ) : (
+            authoringTemplates.map((template) => (
+              <div key={template.templateId} className="meta-card">
+                <div className="panel-head compact">
+                  <span>{template.sourceProjectName || "Workspace"}</span>
+                  <strong>{template.name}</strong>
+                </div>
+                <p>{template.description || "No description"}</p>
+                <div className="session-chip">
+                  <span>{template.manualEvidence.length} evidence</span>
+                  <span>{template.manualMetrics.length} metrics</span>
+                  <span>{template.manualRetrievalUnits.length} RU</span>
+                </div>
+                <div className="action-row">
+                  <button className="ghost small" onClick={() => void handleApplySavedTemplate(template.templateId, "replace")}>
+                    Replace With Template
+                  </button>
+                  <button className="ghost small" onClick={() => void handleApplySavedTemplate(template.templateId, "append")}>
+                    Append Template
+                  </button>
+                  <button className="ghost small" onClick={() => void onDeleteAuthoringTemplate(template.templateId)}>
+                    Delete Template
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
         <div className="action-row">
           <button
             className="ghost small"

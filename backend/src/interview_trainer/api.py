@@ -260,6 +260,15 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except ValueError as exc:  # pragma: no cover
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/library/projects/{project_id}/authoring-pack/apply-template")
+    def apply_library_project_authoring_template(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.apply_authoring_template_to_project(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project or template not found") from exc
+        except ValueError as exc:  # pragma: no cover
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/library/projects/{project_id}/compiled-preview")
     def get_library_project_compiled_preview(project_id: str) -> dict[str, Any]:
         try:
@@ -333,6 +342,34 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
             return workspace_manager.create_role_document(workspace_id, payload)
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/workspaces/{workspace_id}/authoring-templates")
+    def list_library_authoring_templates(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_authoring_templates(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.post("/api/library/workspaces/{workspace_id}/authoring-templates")
+    def create_library_authoring_template(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.create_authoring_template(workspace_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.put("/api/library/authoring-templates/{template_id}")
+    def update_library_authoring_template(template_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.update_authoring_template(template_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="template not found") from exc
+
+    @app.delete("/api/library/authoring-templates/{template_id}")
+    def delete_library_authoring_template(template_id: str) -> dict[str, str]:
+        try:
+            return workspace_manager.delete_authoring_template(template_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="template not found") from exc
 
     @app.put("/api/library/documents/{document_id}")
     def update_library_document(document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
