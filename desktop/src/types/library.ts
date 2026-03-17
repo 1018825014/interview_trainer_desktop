@@ -83,6 +83,74 @@ export interface LibraryManualRetrievalUnitRecord {
   safeClaims: string[];
 }
 
+export interface LibraryCompiledModuleCardRecord {
+  moduleId: string;
+  projectId: string;
+  repoId: string;
+  name: string;
+  responsibility: string;
+  interfaces: string[];
+  dependencies: string[];
+  designRationale: string;
+  upstreamModules: string[];
+  downstreamModules: string[];
+  keyCallPaths: string[];
+  failureSurface: string[];
+  riskyInterfaces: string[];
+  keyFiles: string[];
+}
+
+export interface LibraryCompiledEvidenceCardRecord {
+  evidenceId: string;
+  projectId: string;
+  moduleId: string;
+  evidenceType: string;
+  title: string;
+  summary: string;
+  sourceKind: string;
+  sourceRef: string;
+  confidence: string;
+}
+
+export interface LibraryCompiledMetricEvidenceRecord {
+  evidenceId: string;
+  projectId: string;
+  moduleId: string;
+  metricName: string;
+  metricValue: string;
+  baseline: string;
+  method: string;
+  environment: string;
+  sourceNote: string;
+  confidence: string;
+}
+
+export interface LibraryCompiledRetrievalUnitRecord {
+  unitId: string;
+  unitType: string;
+  projectId: string;
+  moduleId: string;
+  questionForms: string[];
+  shortAnswer: string;
+  longAnswer: string;
+  keyPoints: string[];
+  supportingRefs: string[];
+  hooks: string[];
+  safeClaims: string[];
+}
+
+export interface LibraryProjectCompiledPreviewRecord {
+  compiled: boolean;
+  projectId: string;
+  projectName: string;
+  moduleCards: LibraryCompiledModuleCardRecord[];
+  evidenceCards: LibraryCompiledEvidenceCardRecord[];
+  metricEvidence: LibraryCompiledMetricEvidenceRecord[];
+  retrievalUnits: LibraryCompiledRetrievalUnitRecord[];
+  terminology: string[];
+  compiledAt: number;
+}
+
 export interface LibraryRepoSummaryRecord {
   repoId: string;
   label: string;

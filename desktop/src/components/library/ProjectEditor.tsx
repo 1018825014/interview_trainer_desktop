@@ -1,5 +1,6 @@
 import type {
   LibraryCodeFileRecord,
+  LibraryProjectCompiledPreviewRecord,
   LibraryDocumentRecord,
   LibraryManualEvidenceRecord,
   LibraryManualMetricRecord,
@@ -9,6 +10,7 @@ import type {
 
 interface ProjectEditorProps {
   project: LibraryProjectRecord | null;
+  compiledPreview: LibraryProjectCompiledPreviewRecord | null;
   onChange: (project: LibraryProjectRecord) => void;
   onSave: () => void;
   onDelete: () => void;
@@ -166,7 +168,7 @@ function deleteManualRetrievalUnit(project: LibraryProjectRecord, unitId: string
   };
 }
 
-export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEditorProps) {
+export function ProjectEditor({ project, compiledPreview, onChange, onSave, onDelete }: ProjectEditorProps) {
   if (!project) {
     return (
       <section className="library-editor">
@@ -462,6 +464,86 @@ export function ProjectEditor({ project, onChange, onSave, onDelete }: ProjectEd
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="meta-card">
+        <div className="panel-head compact">
+          <span>Compiled Preview</span>
+          <strong>{compiledPreview?.compiled ? "Ready" : "Not Compiled"}</strong>
+        </div>
+        {compiledPreview?.compiled ? (
+          <>
+            <div className="session-chip">
+              <span>{compiledPreview.moduleCards.length} modules</span>
+              <span>{compiledPreview.evidenceCards.length} evidence</span>
+              <span>{compiledPreview.metricEvidence.length} metrics</span>
+              <span>{compiledPreview.retrievalUnits.length} RU</span>
+            </div>
+            <p>Last compile: {new Date(compiledPreview.compiledAt * 1000).toLocaleString()}</p>
+            <div className="tokens">
+              {compiledPreview.terminology.slice(0, 12).map((term) => (
+                <span key={term} className="token token-outline">
+                  {term}
+                </span>
+              ))}
+            </div>
+            {compiledPreview.moduleCards.map((item) => (
+              <div key={item.moduleId} className="meta-card">
+                <div className="panel-head compact">
+                  <span>Module</span>
+                  <strong>{item.name}</strong>
+                </div>
+                <p>{item.responsibility}</p>
+                <p>{item.designRationale}</p>
+                <div className="session-chip">
+                  {item.keyFiles.slice(0, 3).map((path) => (
+                    <span key={path}>{path}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {compiledPreview.evidenceCards.map((item) => (
+              <div key={item.evidenceId} className="meta-card">
+                <div className="panel-head compact">
+                  <span>{item.evidenceType}</span>
+                  <strong>{item.title}</strong>
+                </div>
+                <p>{item.summary}</p>
+                <div className="session-chip">
+                  <span>{item.sourceKind}</span>
+                  <span>{item.confidence}</span>
+                </div>
+              </div>
+            ))}
+            {compiledPreview.metricEvidence.map((item) => (
+              <div key={item.evidenceId} className="meta-card">
+                <div className="panel-head compact">
+                  <span>{item.metricName}</span>
+                  <strong>{item.metricValue || "No value"}</strong>
+                </div>
+                <p>
+                  Baseline: {item.baseline || "--"} / Method: {item.method || "--"}
+                </p>
+              </div>
+            ))}
+            {compiledPreview.retrievalUnits.map((item) => (
+              <div key={item.unitId} className="meta-card">
+                <div className="panel-head compact">
+                  <span>{item.unitType}</span>
+                  <strong>{item.shortAnswer || item.unitId}</strong>
+                </div>
+                <p>{item.longAnswer}</p>
+                <div className="session-chip">
+                  {item.supportingRefs.slice(0, 4).map((ref) => (
+                    <span key={ref}>{ref}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <p className="library-empty">先 compile workspace，项目下方就会出现自动生成的 module / evidence / retrieval unit 预览。</p>
+        )}
       </div>
 
       <div className="meta-card">

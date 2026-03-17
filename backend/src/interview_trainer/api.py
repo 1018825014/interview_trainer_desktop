@@ -217,6 +217,13 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="project not found") from exc
 
+    @app.get("/api/library/projects/{project_id}/compiled-preview")
+    def get_library_project_compiled_preview(project_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_project_compiled_preview(project_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
     @app.put("/api/library/projects/{project_id}")
     def update_library_project(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -365,6 +372,13 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
     def list_library_bundles(workspace_id: str) -> dict[str, Any]:
         try:
             return workspace_manager.list_bundles(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/workspaces/{workspace_id}/compiled-preview")
+    def get_library_workspace_compiled_preview(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_workspace_compiled_preview(workspace_id)
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="workspace not found") from exc
 

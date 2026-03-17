@@ -1,6 +1,11 @@
 import { requestJson } from "./client";
 import type {
   LibraryBundleSummaryRecord,
+  LibraryCompiledEvidenceCardRecord,
+  LibraryCompiledMetricEvidenceRecord,
+  LibraryCompiledModuleCardRecord,
+  LibraryCompiledRetrievalUnitRecord,
+  LibraryProjectCompiledPreviewRecord,
   LibraryCodeFileRecord,
   LibraryCompileSummaryRecord,
   LibraryDocumentRecord,
@@ -203,6 +208,84 @@ function mapBundleSummary(raw: any): LibraryBundleSummaryRecord {
   };
 }
 
+function mapCompiledModuleCard(raw: any): LibraryCompiledModuleCardRecord {
+  return {
+    moduleId: asString(raw?.module_id),
+    projectId: asString(raw?.project_id),
+    repoId: asString(raw?.repo_id),
+    name: asString(raw?.name),
+    responsibility: asString(raw?.responsibility),
+    interfaces: asStringArray(raw?.interfaces),
+    dependencies: asStringArray(raw?.dependencies),
+    designRationale: asString(raw?.design_rationale),
+    upstreamModules: asStringArray(raw?.upstream_modules),
+    downstreamModules: asStringArray(raw?.downstream_modules),
+    keyCallPaths: asStringArray(raw?.key_call_paths),
+    failureSurface: asStringArray(raw?.failure_surface),
+    riskyInterfaces: asStringArray(raw?.risky_interfaces),
+    keyFiles: asStringArray(raw?.key_files),
+  };
+}
+
+function mapCompiledEvidenceCard(raw: any): LibraryCompiledEvidenceCardRecord {
+  return {
+    evidenceId: asString(raw?.evidence_id),
+    projectId: asString(raw?.project_id),
+    moduleId: asString(raw?.module_id),
+    evidenceType: asString(raw?.evidence_type),
+    title: asString(raw?.title),
+    summary: asString(raw?.summary),
+    sourceKind: asString(raw?.source_kind),
+    sourceRef: asString(raw?.source_ref),
+    confidence: asString(raw?.confidence, "medium"),
+  };
+}
+
+function mapCompiledMetricEvidence(raw: any): LibraryCompiledMetricEvidenceRecord {
+  return {
+    evidenceId: asString(raw?.evidence_id),
+    projectId: asString(raw?.project_id),
+    moduleId: asString(raw?.module_id),
+    metricName: asString(raw?.metric_name),
+    metricValue: asString(raw?.metric_value),
+    baseline: asString(raw?.baseline),
+    method: asString(raw?.method),
+    environment: asString(raw?.environment),
+    sourceNote: asString(raw?.source_note),
+    confidence: asString(raw?.confidence, "medium"),
+  };
+}
+
+function mapCompiledRetrievalUnit(raw: any): LibraryCompiledRetrievalUnitRecord {
+  return {
+    unitId: asString(raw?.unit_id),
+    unitType: asString(raw?.unit_type),
+    projectId: asString(raw?.project_id),
+    moduleId: asString(raw?.module_id),
+    questionForms: asStringArray(raw?.question_forms),
+    shortAnswer: asString(raw?.short_answer),
+    longAnswer: asString(raw?.long_answer),
+    keyPoints: asStringArray(raw?.key_points),
+    supportingRefs: asStringArray(raw?.supporting_refs),
+    hooks: asStringArray(raw?.hooks),
+    safeClaims: asStringArray(raw?.safe_claims),
+  };
+}
+
+function mapProjectCompiledPreview(raw: any): LibraryProjectCompiledPreviewRecord {
+  return {
+    compiled: Boolean(raw?.compiled),
+    projectId: asString(raw?.project_id),
+    projectName: asString(raw?.project_name),
+    moduleCards: Array.isArray(raw?.module_cards) ? raw.module_cards.map(mapCompiledModuleCard) : [],
+    evidenceCards: Array.isArray(raw?.evidence_cards) ? raw.evidence_cards.map(mapCompiledEvidenceCard) : [],
+    metricEvidence: Array.isArray(raw?.metric_evidence) ? raw.metric_evidence.map(mapCompiledMetricEvidence) : [],
+    retrievalUnits: Array.isArray(raw?.retrieval_units) ? raw.retrieval_units.map(mapCompiledRetrievalUnit) : [],
+    terminology: asStringArray(raw?.terminology),
+    compiledAt: asNumber(raw?.compiled_at),
+  };
+}
+
 function mapCompileSummary(raw: any): LibraryCompileSummaryRecord | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -337,6 +420,16 @@ export async function deleteLibraryProject(baseUrl: string, projectId: string): 
     method: "DELETE",
     errorMessage: "Failed to delete library project",
   });
+}
+
+export async function getLibraryProjectCompiledPreview(
+  baseUrl: string,
+  projectId: string,
+): Promise<LibraryProjectCompiledPreviewRecord> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/compiled-preview`, {
+    errorMessage: "Failed to load project compiled preview",
+  });
+  return mapProjectCompiledPreview(payload);
 }
 
 export async function listLibraryProjectDocuments(

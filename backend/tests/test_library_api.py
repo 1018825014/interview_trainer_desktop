@@ -114,6 +114,77 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(payload["activation_summary"]["project_count"], 1)
         self.assertGreaterEqual(payload["activation_summary"]["retrieval_unit_count"], 1)
 
+    def test_library_project_compiled_preview_exposes_auto_and_manual_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Short pitch",
+                    "pitch_90": "Long pitch",
+                    "business_value": "Build agent workflows for operations teams",
+                    "architecture": "React UI + Python orchestrator",
+                    "manual_evidence": [
+                        {
+                            "evidence_id": "manual-evidence-1",
+                            "title": "Load Test",
+                            "summary": "Benchmarked 100 interview-style queries locally.",
+                            "source_ref": "benchmarks/load-test.md",
+                            "confidence": "high",
+                        }
+                    ],
+                    "manual_metrics": [
+                        {
+                            "evidence_id": "manual-metric-1",
+                            "metric_name": "first_token_latency",
+                            "metric_value": "850ms",
+                            "baseline": "1.7s",
+                            "method": "local benchmark",
+                            "environment": "sqlite + fast model",
+                            "source_note": "benchmarks/load-test.md",
+                        }
+                    ],
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-1",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why this architecture?"],
+                            "short_answer": "I optimized for debuggability first.",
+                            "long_answer": "I chose smaller components so I could reason about retrieval failures quickly.",
+                            "key_points": ["debuggability", "latency"],
+                            "supporting_refs": ["manual-evidence-1", "manual-metric-1"],
+                            "hooks": ["The retrieval router was the hardest part."],
+                            "safe_claims": ["The architecture was chosen for debuggability."],
+                        }
+                    ],
+                    "documents": [
+                        {
+                            "path": "README.md",
+                            "content": "Latency dropped from 1.8s to 900ms.",
+                        }
+                    ],
+                    "code_files": [
+                        {
+                            "path": "src/orchestrator/workflow.py",
+                            "content": "def run():\n    return 'ok'\n",
+                        }
+                    ],
+                },
+            ).json()
+
+            client.post(f"/api/workspaces/{workspace['workspace_id']}/compile").json()
+            preview = client.get(f"/api/library/projects/{project['project_id']}/compiled-preview").json()
+
+        self.assertTrue(preview["compiled"])
+        self.assertEqual(preview["project_id"], project["project_id"])
+        self.assertGreaterEqual(len(preview["module_cards"]), 1)
+        self.assertIn("manual-evidence-1", {item["evidence_id"] for item in preview["evidence_cards"]})
+        self.assertIn("manual-metric-1", {item["evidence_id"] for item in preview["metric_evidence"]})
+        self.assertIn("manual-ru-1", {item["unit_id"] for item in preview["retrieval_units"]})
+
     def test_library_document_assets_support_project_and_role_crud(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

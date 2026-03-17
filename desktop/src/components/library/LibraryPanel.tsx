@@ -7,6 +7,7 @@ import {
   createLibraryProject,
   createLibraryWorkspace,
   deleteLibraryProject,
+  getLibraryProjectCompiledPreview,
   getLibraryWorkspace,
   importLibraryProjectPath,
   listLibraryWorkspaces,
@@ -22,6 +23,7 @@ import type {
   LibraryEntitySelection,
   LibraryOverlayRecord,
   LibraryPresetRecord,
+  LibraryProjectCompiledPreviewRecord,
   LibraryProfileRecord,
   LibraryProjectRecord,
   LibraryRoleDocumentRecord,
@@ -253,6 +255,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
   const [importPath, setImportPath] = useState("");
   const [statusMessage, setStatusMessage] = useState("准备加载本地资料库");
   const [latestPayload, setLatestPayload] = useState<LibrarySessionPayload | null>(null);
+  const [projectCompiledPreview, setProjectCompiledPreview] = useState<LibraryProjectCompiledPreviewRecord | null>(null);
 
   function syncWorkspace(next: LibraryWorkspaceRecord) {
     setWorkspace(next);
@@ -356,6 +359,32 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     () => latestBundleForPreset(selectedPreset, workspace?.compiledBundles ?? []),
     [selectedPreset, workspace],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjectCompiledPreview() {
+      if (!selectedProject || !backendOnline) {
+        setProjectCompiledPreview(null);
+        return;
+      }
+      try {
+        const preview = await getLibraryProjectCompiledPreview(backendBaseUrl, selectedProject.projectId);
+        if (!cancelled) {
+          setProjectCompiledPreview(preview);
+        }
+      } catch {
+        if (!cancelled) {
+          setProjectCompiledPreview(null);
+        }
+      }
+    }
+
+    void loadProjectCompiledPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendBaseUrl, backendOnline, selectedProject?.projectId, workspace?.updatedAt, workspace?.compileSummary?.modules]);
 
   function updateProfile(profile: LibraryProfileRecord) {
     setWorkspace((current) =>
@@ -915,6 +944,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           {selection?.type === "project" ? (
             <ProjectEditor
               project={selectedProject}
+              compiledPreview={projectCompiledPreview}
               onChange={updateProject}
               onSave={handleSaveProject}
               onDelete={handleDeleteProject}

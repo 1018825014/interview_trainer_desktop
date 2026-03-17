@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from .knowledge import KnowledgeCompiler
+from .library_compile import LibraryCompiler
 from .library_repository import LibraryRepository
 from .library_session import LibrarySessionBuilder
 
@@ -62,6 +63,7 @@ class WorkspaceManager:
         storage_root: Path | str | None = None,
     ) -> None:
         self.compiler = compiler or KnowledgeCompiler()
+        self.library_compiler = LibraryCompiler(knowledge_compiler=self.compiler)
         self.repository = LibraryRepository(storage_root=storage_root)
         self.session_builder = LibrarySessionBuilder()
         self._workspaces: dict[str, dict[str, Any]] = self.repository.load_workspaces()
@@ -89,6 +91,7 @@ class WorkspaceManager:
             "updated_at": now,
             "compiled_knowledge": None,
             "compile_summary": None,
+            "compiled_library_bundle": None,
         }
         self._workspaces[workspace_id] = workspace
         self.repository.save_workspace(workspace)
@@ -104,8 +107,7 @@ class WorkspaceManager:
             workspace["name"] = _clean_text(payload.get("name")) or workspace["name"]
         if "knowledge" in payload:
             workspace["knowledge"] = self._normalize_knowledge_payload(payload.get("knowledge", {}))
-            workspace["compiled_knowledge"] = None
-            workspace["compile_summary"] = None
+            self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return self._serialize(workspace)
@@ -123,8 +125,7 @@ class WorkspaceManager:
         workspace = self._workspaces[workspace_id]
         project = self._normalize_project(payload)
         workspace["knowledge"].setdefault("projects", []).append(project)
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return self._serialize_project(project)
@@ -187,8 +188,7 @@ class WorkspaceManager:
                 for item in payload.get("code_files", [])
                 if isinstance(item, dict) and _content_text(item.get("content")).strip()
             ]
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return self._serialize_project(project)
@@ -197,8 +197,7 @@ class WorkspaceManager:
         workspace, project = self._find_project(project_id)
         projects = workspace["knowledge"].get("projects", [])
         workspace["knowledge"]["projects"] = [item for item in projects if item is not project]
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return {"status": "deleted", "project_id": project_id}
@@ -211,8 +210,7 @@ class WorkspaceManager:
         workspace, project = self._find_project(project_id)
         document = self._normalize_document_asset(payload, scope="project")
         project.setdefault("documents", []).append(document)
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return self._serialize_document(document)
@@ -246,8 +244,7 @@ class WorkspaceManager:
         workspace = self._workspaces[workspace_id]
         document = self._normalize_document_asset(payload, scope="role")
         workspace.setdefault("knowledge", {}).setdefault("role_documents", []).append(document)
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return self._serialize_document(document)
@@ -265,8 +262,7 @@ class WorkspaceManager:
         if "source_path" in payload:
             document["source_path"] = _clean_text(payload.get("source_path"))
         document["updated_at"] = time.time()
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = document["updated_at"]
         self.repository.save_workspace(workspace)
         return self._serialize_document(document)
@@ -282,8 +278,7 @@ class WorkspaceManager:
                 if document in documents:
                     project["documents"] = [item for item in documents if item is not document]
                     break
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         self.repository.save_workspace(workspace)
         return {"status": "deleted", "document_id": document_id}
@@ -379,6 +374,64 @@ class WorkspaceManager:
                     return dict(bundle)
         raise KeyError(bundle_id)
 
+    def get_workspace_compiled_preview(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        preview = workspace.get("compiled_library_bundle")
+        if not isinstance(preview, dict):
+            return self._empty_compiled_preview()
+        return {
+            "compiled": True,
+            "module_cards": [dict(item) for item in preview.get("module_cards", [])],
+            "evidence_cards": [dict(item) for item in preview.get("evidence_cards", [])],
+            "metric_evidence": [dict(item) for item in preview.get("metric_evidence", [])],
+            "retrieval_units": [dict(item) for item in preview.get("retrieval_units", [])],
+            "terminology": list(preview.get("terminology", [])),
+            "compiled_at": float(preview.get("compiled_at", 0.0) or 0.0),
+        }
+
+    def get_project_compiled_preview(self, project_id: str) -> dict[str, Any]:
+        workspace, project = self._find_project(project_id)
+        preview = self.get_workspace_compiled_preview(workspace["workspace_id"])
+        if not preview.get("compiled"):
+            return {
+                "compiled": False,
+                "project_id": project["project_id"],
+                "project_name": project["name"],
+                "module_cards": [],
+                "evidence_cards": [],
+                "metric_evidence": [],
+                "retrieval_units": [],
+                "terminology": [],
+                "compiled_at": 0.0,
+            }
+        return {
+            "compiled": True,
+            "project_id": project["project_id"],
+            "project_name": project["name"],
+            "module_cards": [
+                dict(item)
+                for item in preview.get("module_cards", [])
+                if _clean_text(item.get("project_id")) == project_id
+            ],
+            "evidence_cards": [
+                dict(item)
+                for item in preview.get("evidence_cards", [])
+                if _clean_text(item.get("project_id")) == project_id
+            ],
+            "metric_evidence": [
+                dict(item)
+                for item in preview.get("metric_evidence", [])
+                if _clean_text(item.get("project_id")) == project_id
+            ],
+            "retrieval_units": [
+                dict(item)
+                for item in preview.get("retrieval_units", [])
+                if _clean_text(item.get("project_id")) == project_id
+            ],
+            "terminology": list(preview.get("terminology", [])),
+            "compiled_at": float(preview.get("compiled_at", 0.0) or 0.0),
+        }
+
     def build_preset_session_payload(self, preset_id: str) -> dict[str, Any]:
         workspace, preset = self._find_preset(preset_id)
         overlay = None
@@ -396,8 +449,10 @@ class WorkspaceManager:
 
     def compile_workspace(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
-        compiled = self.compiler.compile(workspace["knowledge"])
+        bundle = self.library_compiler.compile_workspace(workspace["knowledge"])
+        compiled = bundle.compiled_knowledge
         workspace["compiled_knowledge"] = self.compiler.to_dict(compiled)
+        workspace["compiled_library_bundle"] = self._serialize_compiled_library_bundle(bundle)
         workspace["compile_summary"] = {
             "projects": [project.name for project in compiled.projects],
             "role_playbooks": [playbook.role_name for playbook in compiled.role_playbooks],
@@ -685,6 +740,33 @@ class WorkspaceManager:
             "repo_id": code_file.get("repo_id", ""),
         }
 
+    def _serialize_compiled_library_bundle(self, bundle: Any) -> dict[str, Any]:
+        payload = bundle.to_dict()
+        return {
+            "module_cards": [dict(item) for item in payload.get("module_cards", [])],
+            "evidence_cards": [dict(item) for item in payload.get("evidence_cards", [])],
+            "metric_evidence": [dict(item) for item in payload.get("metric_evidence", [])],
+            "retrieval_units": [dict(item) for item in payload.get("retrieval_units", [])],
+            "terminology": list(payload.get("terminology", [])),
+            "compiled_at": time.time(),
+        }
+
+    def _empty_compiled_preview(self) -> dict[str, Any]:
+        return {
+            "compiled": False,
+            "module_cards": [],
+            "evidence_cards": [],
+            "metric_evidence": [],
+            "retrieval_units": [],
+            "terminology": [],
+            "compiled_at": 0.0,
+        }
+
+    def _invalidate_compiled_artifacts(self, workspace: dict[str, Any]) -> None:
+        workspace["compiled_knowledge"] = None
+        workspace["compile_summary"] = None
+        workspace["compiled_library_bundle"] = None
+
     def _normalize_manual_evidence(self, payload: dict[str, Any], index: int) -> dict[str, Any]:
         return {
             "evidence_id": _clean_text(payload.get("evidence_id")) or f"manual-evidence-{index}",
@@ -899,8 +981,7 @@ class WorkspaceManager:
         if "architecture" in payload:
             project["architecture"] = _clean_text(payload.get("architecture")) or project.get("architecture", "")
 
-        workspace["compiled_knowledge"] = None
-        workspace["compile_summary"] = None
+        self._invalidate_compiled_artifacts(workspace)
         workspace["updated_at"] = time.time()
         repo_summary = {
             "repo_id": repo_id,
@@ -961,6 +1042,9 @@ class WorkspaceManager:
                     changed = True
             if "compiled_bundles" not in workspace:
                 workspace["compiled_bundles"] = []
+                changed = True
+            if "compiled_library_bundle" not in workspace:
+                workspace["compiled_library_bundle"] = None
                 changed = True
             normalized_role_documents = [
                 self._normalize_document_asset(document, scope="role", default_title=f"{DEFAULT_ROLE_DOCUMENT_TITLE} {index}")

@@ -350,11 +350,32 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `48/48` passing
+- Stage 10 implemented:
+  - workspace compile now stores a lightweight compiled preview bundle alongside the existing `compiled_knowledge` summary
+  - added preview APIs for compiled artifacts:
+    - `GET /api/library/workspaces/{workspace_id}/compiled-preview`
+    - `GET /api/library/projects/{project_id}/compiled-preview`
+  - project compiled preview returns:
+    - `module_cards`
+    - `evidence_cards`
+    - `metric_evidence`
+    - `retrieval_units`
+    - `terminology`
+    - `compiled_at`
+  - preview includes both auto-generated artifacts and previously authored manual evidence / metrics / retrieval units after compile
+  - desktop `ProjectEditor` now fetches and renders the current project's compiled preview, so authored material can be compared against actual compile output in one place
+- Stage 10 verification:
+  - targeted backend tests:
+    - `test_library_api.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `49/49` passing
 - Recommended next implementation order:
   1. bundle history / compare / reuse UX polish
   2. deeper retrieval ranking and hook control tuning
   3. direct document-asset persistence actions in the desktop editor
-  4. compiled artifact preview APIs for module / evidence / retrieval-unit inspection
+  4. workspace-level compiled preview navigation and filtering polish
 
 ## Best next debugging tasks
 
