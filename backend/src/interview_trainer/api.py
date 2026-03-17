@@ -376,9 +376,19 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
             raise HTTPException(status_code=404, detail="workspace not found") from exc
 
     @app.get("/api/library/workspaces/{workspace_id}/compiled-preview")
-    def get_library_workspace_compiled_preview(workspace_id: str) -> dict[str, Any]:
+    def get_library_workspace_compiled_preview(
+        workspace_id: str,
+        project_id: str | None = None,
+        artifact_kind: str | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
         try:
-            return workspace_manager.get_workspace_compiled_preview(workspace_id)
+            return workspace_manager.get_workspace_compiled_preview(
+                workspace_id,
+                project_id=project_id,
+                artifact_kind=artifact_kind,
+                search=search,
+            )
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="workspace not found") from exc
 

@@ -3,18 +3,23 @@ import {
   buildPresetSessionPayload,
   compareLibraryBundles,
   compileLibraryWorkspace,
+  createLibraryProjectDocument,
   createLibraryOverlay,
   createLibraryPreset,
   createLibraryProject,
+  createLibraryRoleDocument,
   createLibraryWorkspace,
+  deleteLibraryDocument,
   deleteLibraryProject,
   getLibraryBundleDetail,
   getLibraryProjectCompiledPreview,
+  getLibraryWorkspaceCompiledPreview,
   getLibraryWorkspace,
   importLibraryProjectPath,
   listLibraryWorkspaces,
   reindexLibraryRepo,
   reuseLibraryBundleSessionPayload,
+  updateLibraryDocument,
   updateLibraryOverlay,
   updateLibraryPreset,
   updateLibraryProject,
@@ -28,11 +33,13 @@ import type {
   LibraryEntitySelection,
   LibraryOverlayRecord,
   LibraryPresetRecord,
+  LibraryDocumentRecord,
   LibraryProjectCompiledPreviewRecord,
   LibraryProfileRecord,
   LibraryProjectRecord,
   LibraryRoleDocumentRecord,
   LibrarySessionPayload,
+  LibraryWorkspaceCompiledPreviewRecord,
   LibraryWorkspaceRecord,
 } from "../../types/library";
 import { OverlayEditor } from "./OverlayEditor";
@@ -63,6 +70,20 @@ function defaultRoleDocument(): LibraryRoleDocumentRecord {
     scope: "role",
     title: "Role Notes",
     path: "role/notes.md",
+    content: "",
+    sourceKind: "manual",
+    sourcePath: "",
+    repoId: "",
+    updatedAt: Date.now() / 1000,
+  };
+}
+
+function defaultProjectDocument(project: LibraryProjectRecord): LibraryDocumentRecord {
+  return {
+    documentId: `draft-${Date.now()}`,
+    scope: "project",
+    title: "New Document",
+    path: `notes/${project.documents.length + 1}.md`,
     content: "",
     sourceKind: "manual",
     sourcePath: "",
@@ -261,6 +282,12 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
   const [statusMessage, setStatusMessage] = useState("准备加载本地资料库");
   const [latestPayload, setLatestPayload] = useState<LibrarySessionPayload | null>(null);
   const [projectCompiledPreview, setProjectCompiledPreview] = useState<LibraryProjectCompiledPreviewRecord | null>(null);
+  const [workspaceCompiledPreview, setWorkspaceCompiledPreview] = useState<LibraryWorkspaceCompiledPreviewRecord | null>(null);
+  const [workspacePreviewFilters, setWorkspacePreviewFilters] = useState({
+    projectId: "",
+    artifactKind: "",
+    search: "",
+  });
   const [bundleDetail, setBundleDetail] = useState<LibraryBundleDetailRecord | null>(null);
   const [bundleComparison, setBundleComparison] = useState<LibraryBundleComparisonRecord | null>(null);
   const [compareBundleId, setCompareBundleId] = useState("");
@@ -397,6 +424,49 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
   useEffect(() => {
     let cancelled = false;
 
+    async function loadWorkspaceCompiledPreview() {
+      if (!workspace || !backendOnline) {
+        setWorkspaceCompiledPreview(null);
+        return;
+      }
+      try {
+        const preview = await getLibraryWorkspaceCompiledPreview(backendBaseUrl, workspace.workspaceId, workspacePreviewFilters);
+        if (!cancelled) {
+          setWorkspaceCompiledPreview(preview);
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkspaceCompiledPreview(null);
+        }
+      }
+    }
+
+    void loadWorkspaceCompiledPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    backendBaseUrl,
+    backendOnline,
+    workspace?.workspaceId,
+    workspace?.updatedAt,
+    workspace?.compileSummary?.modules,
+    workspacePreviewFilters.projectId,
+    workspacePreviewFilters.artifactKind,
+    workspacePreviewFilters.search,
+  ]);
+
+  useEffect(() => {
+    setWorkspacePreviewFilters({
+      projectId: "",
+      artifactKind: "",
+      search: "",
+    });
+  }, [workspace?.workspaceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function loadBundleArtifacts() {
       if (!selectedBundle || !backendOnline) {
         setBundleDetail(null);
@@ -490,20 +560,6 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     });
   }
 
-  function addRoleDocument() {
-    updateRoleDocument({
-      documentId: `role-draft-${Date.now()}`,
-      scope: "role",
-      title: "New Role Note",
-      path: `role/${Date.now()}.md`,
-      content: "",
-      sourceKind: "manual",
-      sourcePath: "",
-      repoId: "",
-      updatedAt: Date.now() / 1000,
-    });
-  }
-
   function deleteRoleDocument(documentId: string) {
     setWorkspace((current) =>
       current
@@ -526,6 +582,50 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
             knowledge: {
               ...current.knowledge,
               projects: current.knowledge.projects.map((item) => (item.projectId === project.projectId ? project : item)),
+            },
+          }
+        : current,
+    );
+  }
+
+  function replaceProjectDocument(projectId: string, document: LibraryDocumentRecord) {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            knowledge: {
+              ...current.knowledge,
+              projects: current.knowledge.projects.map((item) =>
+                item.projectId === projectId
+                  ? {
+                      ...item,
+                      documents: item.documents.some((entry) => entry.documentId === document.documentId)
+                        ? item.documents.map((entry) => (entry.documentId === document.documentId ? document : entry))
+                        : [...item.documents, document],
+                    }
+                  : item,
+              ),
+            },
+          }
+        : current,
+    );
+  }
+
+  function removeProjectDocument(projectId: string, documentId: string) {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            knowledge: {
+              ...current.knowledge,
+              projects: current.knowledge.projects.map((item) =>
+                item.projectId === projectId
+                  ? {
+                      ...item,
+                      documents: item.documents.filter((entry) => entry.documentId !== documentId),
+                    }
+                  : item,
+              ),
             },
           }
         : current,
@@ -612,6 +712,158 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       setStatusMessage("资料库背景与长期资料已保存。");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "保存资料库失败。");
+    }
+  }
+
+  async function handleCreateRoleDocument() {
+    if (!workspace) {
+      setStatusMessage("请先创建资料库。");
+      return;
+    }
+    if (!backendOnline) {
+      updateRoleDocument({
+        ...defaultRoleDocument(),
+        documentId: `role-draft-${Date.now()}`,
+        path: `role/${Date.now()}.md`,
+        updatedAt: Date.now() / 1000,
+      });
+      setStatusMessage("后端离线，先在本地示例里新增 Role 文档。");
+      return;
+    }
+    try {
+      const created = await createLibraryRoleDocument(backendBaseUrl, workspace.workspaceId, {
+        title: "New Role Note",
+        path: `role/${Date.now()}.md`,
+        content: "",
+      });
+      updateRoleDocument(created);
+      setStatusMessage("已新建 Role 文档。");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "新建 Role 文档失败。");
+    }
+  }
+
+  async function handleSaveRoleDocument(document: LibraryRoleDocumentRecord) {
+    if (!workspace) {
+      setStatusMessage("请先创建资料库。");
+      return;
+    }
+    if (!backendOnline) {
+      setStatusMessage("后端离线，无法直接保存 Role 文档。");
+      return;
+    }
+    try {
+      const payload = {
+        title: document.title,
+        path: document.path,
+        content: document.content,
+        source_kind: document.sourceKind,
+        source_path: document.sourcePath,
+        repo_id: document.repoId,
+      };
+      const saved = document.documentId.startsWith("role-draft-")
+        ? await createLibraryRoleDocument(backendBaseUrl, workspace.workspaceId, payload)
+        : await updateLibraryDocument(backendBaseUrl, document.documentId, payload);
+      updateRoleDocument(saved as LibraryRoleDocumentRecord);
+      if (document.documentId.startsWith("role-draft-")) {
+        deleteRoleDocument(document.documentId);
+      }
+      setStatusMessage(`Role 文档 ${document.title || document.path} 已保存。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "保存 Role 文档失败。");
+    }
+  }
+
+  async function handleDeleteRoleDocument(document: LibraryRoleDocumentRecord) {
+    if (!workspace) {
+      return;
+    }
+    if (!backendOnline || document.documentId.startsWith("role-draft-")) {
+      deleteRoleDocument(document.documentId);
+      setStatusMessage("已删除 Role 文档。");
+      return;
+    }
+    try {
+      await deleteLibraryDocument(backendBaseUrl, document.documentId);
+      deleteRoleDocument(document.documentId);
+      setStatusMessage(`Role 文档 ${document.title || document.path} 已删除。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "删除 Role 文档失败。");
+    }
+  }
+
+  async function handleCreateProjectDocument() {
+    if (!selectedProject) {
+      setStatusMessage("请先选择一个项目。");
+      return;
+    }
+    if (!backendOnline) {
+      updateProject({
+        ...selectedProject,
+        documents: [...selectedProject.documents, defaultProjectDocument(selectedProject)],
+      });
+      setStatusMessage("后端离线，先在本地示例里新增文档。");
+      return;
+    }
+    try {
+      const created = await createLibraryProjectDocument(backendBaseUrl, selectedProject.projectId, {
+        title: "New Document",
+        path: `notes/${selectedProject.documents.length + 1}.md`,
+        content: "",
+      });
+      replaceProjectDocument(selectedProject.projectId, created);
+      setStatusMessage("已新建项目文档。");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "新建项目文档失败。");
+    }
+  }
+
+  async function handleSaveProjectDocument(document: LibraryDocumentRecord) {
+    if (!selectedProject) {
+      setStatusMessage("请先选择一个项目。");
+      return;
+    }
+    if (!backendOnline) {
+      setStatusMessage("后端离线，无法直接保存文档。");
+      return;
+    }
+    try {
+      const payload = {
+        title: document.title,
+        path: document.path,
+        content: document.content,
+        source_kind: document.sourceKind,
+        source_path: document.sourcePath,
+        repo_id: document.repoId,
+      };
+      const saved = document.documentId.startsWith("draft-")
+        ? await createLibraryProjectDocument(backendBaseUrl, selectedProject.projectId, payload)
+        : await updateLibraryDocument(backendBaseUrl, document.documentId, payload);
+      replaceProjectDocument(selectedProject.projectId, saved as LibraryDocumentRecord);
+      if (document.documentId.startsWith("draft-")) {
+        removeProjectDocument(selectedProject.projectId, document.documentId);
+      }
+      setStatusMessage(`文档 ${document.title || document.path} 已保存。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "保存文档失败。");
+    }
+  }
+
+  async function handleDeleteProjectDocument(document: LibraryDocumentRecord) {
+    if (!selectedProject) {
+      return;
+    }
+    if (!backendOnline || document.documentId.startsWith("draft-")) {
+      removeProjectDocument(selectedProject.projectId, document.documentId);
+      setStatusMessage("已删除项目文档。");
+      return;
+    }
+    try {
+      await deleteLibraryDocument(backendBaseUrl, document.documentId);
+      removeProjectDocument(selectedProject.projectId, document.documentId);
+      setStatusMessage(`文档 ${document.title || document.path} 已删除。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "删除文档失败。");
     }
   }
 
@@ -994,7 +1246,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
                   <strong>{workspace.knowledge.roleDocuments.length}</strong>
                 </div>
                 <div className="action-row">
-                  <button className="ghost small" onClick={addRoleDocument}>
+                  <button className="ghost small" onClick={handleCreateRoleDocument}>
                     新增 Role 文档
                   </button>
                 </div>
@@ -1030,12 +1282,125 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
                       />
                     </label>
                     <div className="action-row">
-                      <button className="ghost small" onClick={() => deleteRoleDocument(document.documentId)}>
+                      <button className="ghost accent small" onClick={() => handleSaveRoleDocument(document)}>
+                        Save Role Doc
+                      </button>
+                      <button className="ghost small" onClick={() => handleDeleteRoleDocument(document)}>
                         删除 Role 文档
                       </button>
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="meta-card">
+                <div className="panel-head compact">
+                  <span>Workspace Preview</span>
+                  <strong>{workspaceCompiledPreview?.compiled ? "Ready" : "Not Compiled"}</strong>
+                </div>
+                {workspaceCompiledPreview?.compiled ? (
+                  <>
+                    <div className="action-row">
+                      <label>
+                        Project
+                        <select
+                          value={workspacePreviewFilters.projectId}
+                          onChange={(event) =>
+                            setWorkspacePreviewFilters((current) => ({ ...current, projectId: event.target.value }))
+                          }
+                        >
+                          <option value="">All</option>
+                          {workspace.knowledge.projects.map((project) => (
+                            <option key={project.projectId} value={project.projectId}>
+                              {project.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Artifact
+                        <select
+                          value={workspacePreviewFilters.artifactKind}
+                          onChange={(event) =>
+                            setWorkspacePreviewFilters((current) => ({ ...current, artifactKind: event.target.value }))
+                          }
+                        >
+                          <option value="">All</option>
+                          <option value="module">Module</option>
+                          <option value="evidence">Evidence</option>
+                          <option value="metric">Metric</option>
+                          <option value="retrieval">Retrieval</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      Search
+                      <input
+                        value={workspacePreviewFilters.search}
+                        onChange={(event) =>
+                          setWorkspacePreviewFilters((current) => ({ ...current, search: event.target.value }))
+                        }
+                        placeholder="latency / retrieval / router"
+                      />
+                    </label>
+                    <div className="session-chip">
+                      <span>{workspaceCompiledPreview.moduleCards.length} modules</span>
+                      <span>{workspaceCompiledPreview.evidenceCards.length} evidence</span>
+                      <span>{workspaceCompiledPreview.metricEvidence.length} metrics</span>
+                      <span>{workspaceCompiledPreview.retrievalUnits.length} RU</span>
+                    </div>
+                    {workspaceCompiledPreview.projectSummaries.length > 0 ? (
+                      <div className="tokens">
+                        {workspaceCompiledPreview.projectSummaries.map((summary) => (
+                          <span key={summary.projectId} className="token token-outline">
+                            {summary.projectName}: {summary.moduleCount}/{summary.evidenceCount}/{summary.metricCount}/
+                            {summary.retrievalUnitCount}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="library-empty">Current filters removed all project summaries.</p>
+                    )}
+                    {workspaceCompiledPreview.moduleCards.slice(0, 6).map((item) => (
+                      <div key={item.moduleId} className="meta-card">
+                        <div className="panel-head compact">
+                          <span>Module</span>
+                          <strong>{item.name}</strong>
+                        </div>
+                        <p>{item.responsibility}</p>
+                      </div>
+                    ))}
+                    {workspaceCompiledPreview.evidenceCards.slice(0, 6).map((item) => (
+                      <div key={item.evidenceId} className="meta-card">
+                        <div className="panel-head compact">
+                          <span>{item.evidenceType}</span>
+                          <strong>{item.title}</strong>
+                        </div>
+                        <p>{item.summary}</p>
+                      </div>
+                    ))}
+                    {workspaceCompiledPreview.metricEvidence.slice(0, 6).map((item) => (
+                      <div key={item.evidenceId} className="meta-card">
+                        <div className="panel-head compact">
+                          <span>{item.metricName}</span>
+                          <strong>{item.metricValue || "--"}</strong>
+                        </div>
+                        <p>{item.baseline || "--"} / {item.method || "--"}</p>
+                      </div>
+                    ))}
+                    {workspaceCompiledPreview.retrievalUnits.slice(0, 8).map((item) => (
+                      <div key={item.unitId} className="meta-card">
+                        <div className="panel-head compact">
+                          <span>{item.unitType}</span>
+                          <strong>{item.shortAnswer || item.unitId}</strong>
+                        </div>
+                        <p>{item.longAnswer}</p>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <p className="library-empty">Run compile first, then use filters here to inspect workspace artifacts.</p>
+                )}
               </div>
 
               <div className="action-row">
@@ -1051,6 +1416,9 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
               project={selectedProject}
               compiledPreview={projectCompiledPreview}
               onChange={updateProject}
+              onCreateDocument={handleCreateProjectDocument}
+              onSaveDocument={handleSaveProjectDocument}
+              onDeleteDocument={handleDeleteProjectDocument}
               onSave={handleSaveProject}
               onDelete={handleDeleteProject}
             />

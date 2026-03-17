@@ -9,6 +9,9 @@ import type {
   LibraryCompiledModuleCardRecord,
   LibraryCompiledRetrievalUnitRecord,
   LibraryProjectCompiledPreviewRecord,
+  LibraryWorkspaceCompiledPreviewFiltersRecord,
+  LibraryWorkspaceCompiledPreviewRecord,
+  LibraryWorkspaceCompiledPreviewSummaryRecord,
   LibraryCodeFileRecord,
   LibraryCompileSummaryRecord,
   LibraryDocumentRecord,
@@ -289,6 +292,41 @@ function mapProjectCompiledPreview(raw: any): LibraryProjectCompiledPreviewRecor
   };
 }
 
+function mapWorkspaceCompiledPreviewSummary(raw: any): LibraryWorkspaceCompiledPreviewSummaryRecord {
+  return {
+    projectId: asString(raw?.project_id),
+    projectName: asString(raw?.project_name),
+    moduleCount: asNumber(raw?.module_count),
+    evidenceCount: asNumber(raw?.evidence_count),
+    metricCount: asNumber(raw?.metric_count),
+    retrievalUnitCount: asNumber(raw?.retrieval_unit_count),
+  };
+}
+
+function mapWorkspaceCompiledPreviewFilters(raw: any): LibraryWorkspaceCompiledPreviewFiltersRecord {
+  return {
+    projectId: asString(raw?.project_id),
+    artifactKind: asString(raw?.artifact_kind),
+    search: asString(raw?.search),
+  };
+}
+
+function mapWorkspaceCompiledPreview(raw: any): LibraryWorkspaceCompiledPreviewRecord {
+  return {
+    compiled: Boolean(raw?.compiled),
+    moduleCards: Array.isArray(raw?.module_cards) ? raw.module_cards.map(mapCompiledModuleCard) : [],
+    evidenceCards: Array.isArray(raw?.evidence_cards) ? raw.evidence_cards.map(mapCompiledEvidenceCard) : [],
+    metricEvidence: Array.isArray(raw?.metric_evidence) ? raw.metric_evidence.map(mapCompiledMetricEvidence) : [],
+    retrievalUnits: Array.isArray(raw?.retrieval_units) ? raw.retrieval_units.map(mapCompiledRetrievalUnit) : [],
+    terminology: asStringArray(raw?.terminology),
+    compiledAt: asNumber(raw?.compiled_at),
+    filters: mapWorkspaceCompiledPreviewFilters(raw?.filters),
+    projectSummaries: Array.isArray(raw?.project_summaries)
+      ? raw.project_summaries.map(mapWorkspaceCompiledPreviewSummary)
+      : [],
+  };
+}
+
 function mapCompileSummary(raw: any): LibraryCompileSummaryRecord | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -474,6 +512,31 @@ export async function getLibraryProjectCompiledPreview(
     errorMessage: "Failed to load project compiled preview",
   });
   return mapProjectCompiledPreview(payload);
+}
+
+export async function getLibraryWorkspaceCompiledPreview(
+  baseUrl: string,
+  workspaceId: string,
+  filters?: Partial<LibraryWorkspaceCompiledPreviewFiltersRecord>,
+): Promise<LibraryWorkspaceCompiledPreviewRecord> {
+  const searchParams = new URLSearchParams();
+  if (filters?.projectId) {
+    searchParams.set("project_id", filters.projectId);
+  }
+  if (filters?.artifactKind) {
+    searchParams.set("artifact_kind", filters.artifactKind);
+  }
+  if (filters?.search) {
+    searchParams.set("search", filters.search);
+  }
+  const query = searchParams.toString();
+  const payload = await requestJson<any>(
+    `${baseUrl}/api/library/workspaces/${workspaceId}/compiled-preview${query ? `?${query}` : ""}`,
+    {
+      errorMessage: "Failed to load workspace compiled preview",
+    },
+  );
+  return mapWorkspaceCompiledPreview(payload);
 }
 
 export async function listLibraryProjectDocuments(

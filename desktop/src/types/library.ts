@@ -151,6 +151,33 @@ export interface LibraryProjectCompiledPreviewRecord {
   compiledAt: number;
 }
 
+export interface LibraryWorkspaceCompiledPreviewSummaryRecord {
+  projectId: string;
+  projectName: string;
+  moduleCount: number;
+  evidenceCount: number;
+  metricCount: number;
+  retrievalUnitCount: number;
+}
+
+export interface LibraryWorkspaceCompiledPreviewFiltersRecord {
+  projectId: string;
+  artifactKind: string;
+  search: string;
+}
+
+export interface LibraryWorkspaceCompiledPreviewRecord {
+  compiled: boolean;
+  moduleCards: LibraryCompiledModuleCardRecord[];
+  evidenceCards: LibraryCompiledEvidenceCardRecord[];
+  metricEvidence: LibraryCompiledMetricEvidenceRecord[];
+  retrievalUnits: LibraryCompiledRetrievalUnitRecord[];
+  terminology: string[];
+  compiledAt: number;
+  filters: LibraryWorkspaceCompiledPreviewFiltersRecord;
+  projectSummaries: LibraryWorkspaceCompiledPreviewSummaryRecord[];
+}
+
 export interface LibraryRepoSummaryRecord {
   repoId: string;
   label: string;

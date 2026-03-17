@@ -185,6 +185,77 @@ class LibraryApiTests(unittest.TestCase):
         self.assertIn("manual-metric-1", {item["evidence_id"] for item in preview["metric_evidence"]})
         self.assertIn("manual-ru-1", {item["unit_id"] for item in preview["retrieval_units"]})
 
+    def test_library_workspace_compiled_preview_supports_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project_one = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Short pitch",
+                    "business_value": "Build agent workflows for interview practice",
+                    "architecture": "React + Python",
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-latency",
+                            "unit_type": "performance_evidence",
+                            "question_forms": ["How did you improve latency?"],
+                            "short_answer": "I optimized first-token latency.",
+                            "long_answer": "I shortened the retrieval path to improve latency.",
+                            "key_points": ["latency", "retrieval"],
+                            "supporting_refs": [],
+                            "hooks": ["The retrieval router latency was the hardest part."],
+                            "safe_claims": ["The system improved latency."],
+                        }
+                    ],
+                },
+            ).json()
+            client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Bundle Ops",
+                    "pitch_30": "Short pitch",
+                    "business_value": "Improve bundle reuse",
+                    "architecture": "SQLite + local compiler",
+                    "manual_retrieval_units": [
+                        {
+                            "unit_id": "manual-ru-bundle",
+                            "unit_type": "tradeoff_reasoning",
+                            "question_forms": ["Why bundle snapshots?"],
+                            "short_answer": "I optimized context switching.",
+                            "long_answer": "I stored session payload snapshots to improve company switching.",
+                            "key_points": ["bundle", "reuse"],
+                            "supporting_refs": [],
+                            "hooks": ["Bundle reuse made context switching much faster."],
+                            "safe_claims": ["The system prioritized fast switching."],
+                        }
+                    ],
+                },
+            ).json()
+
+            client.post(f"/api/workspaces/{workspace['workspace_id']}/compile").json()
+            preview = client.get(
+                f"/api/library/workspaces/{workspace['workspace_id']}/compiled-preview",
+                params={
+                    "project_id": project_one["project_id"],
+                    "artifact_kind": "retrieval",
+                    "search": "latency",
+                },
+            ).json()
+
+        self.assertTrue(preview["compiled"])
+        self.assertEqual(preview["filters"]["project_id"], project_one["project_id"])
+        self.assertEqual(preview["filters"]["artifact_kind"], "retrieval")
+        self.assertEqual(preview["filters"]["search"], "latency")
+        self.assertEqual(preview["module_cards"], [])
+        self.assertEqual(preview["evidence_cards"], [])
+        self.assertEqual(preview["metric_evidence"], [])
+        self.assertEqual([item["unit_id"] for item in preview["retrieval_units"]], ["manual-ru-latency"])
+        self.assertEqual(len(preview["project_summaries"]), 1)
+        self.assertEqual(preview["project_summaries"][0]["project_id"], project_one["project_id"])
+
     def test_library_bundle_history_supports_reuse_and_compare(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

@@ -437,19 +437,69 @@ class WorkspaceManager:
             "removed_hook_texts": [item for item in right_artifacts["hook_texts"] if item not in left_artifacts["hook_texts"]],
         }
 
-    def get_workspace_compiled_preview(self, workspace_id: str) -> dict[str, Any]:
+    def get_workspace_compiled_preview(
+        self,
+        workspace_id: str,
+        *,
+        project_id: str | None = None,
+        artifact_kind: str | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
         preview = workspace.get("compiled_library_bundle")
         if not isinstance(preview, dict):
             return self._empty_compiled_preview()
+        normalized_project_id = _clean_text(project_id)
+        normalized_kind = _clean_text(artifact_kind).lower()
+        normalized_search = _clean_text(search).lower()
+        module_cards = self._filter_preview_items(
+            preview.get("module_cards", []),
+            project_id=normalized_project_id,
+            artifact_kind=normalized_kind,
+            current_kind="module",
+            search=normalized_search,
+        )
+        evidence_cards = self._filter_preview_items(
+            preview.get("evidence_cards", []),
+            project_id=normalized_project_id,
+            artifact_kind=normalized_kind,
+            current_kind="evidence",
+            search=normalized_search,
+        )
+        metric_evidence = self._filter_preview_items(
+            preview.get("metric_evidence", []),
+            project_id=normalized_project_id,
+            artifact_kind=normalized_kind,
+            current_kind="metric",
+            search=normalized_search,
+        )
+        retrieval_units = self._filter_preview_items(
+            preview.get("retrieval_units", []),
+            project_id=normalized_project_id,
+            artifact_kind=normalized_kind,
+            current_kind="retrieval",
+            search=normalized_search,
+        )
         return {
             "compiled": True,
-            "module_cards": [dict(item) for item in preview.get("module_cards", [])],
-            "evidence_cards": [dict(item) for item in preview.get("evidence_cards", [])],
-            "metric_evidence": [dict(item) for item in preview.get("metric_evidence", [])],
-            "retrieval_units": [dict(item) for item in preview.get("retrieval_units", [])],
+            "module_cards": module_cards,
+            "evidence_cards": evidence_cards,
+            "metric_evidence": metric_evidence,
+            "retrieval_units": retrieval_units,
             "terminology": list(preview.get("terminology", [])),
             "compiled_at": float(preview.get("compiled_at", 0.0) or 0.0),
+            "filters": {
+                "project_id": normalized_project_id,
+                "artifact_kind": normalized_kind,
+                "search": normalized_search,
+            },
+            "project_summaries": self._build_workspace_preview_summaries(
+                workspace,
+                module_cards=module_cards,
+                evidence_cards=evidence_cards,
+                metric_evidence=metric_evidence,
+                retrieval_units=retrieval_units,
+            ),
         }
 
     def get_project_compiled_preview(self, project_id: str) -> dict[str, Any]:
@@ -471,26 +521,10 @@ class WorkspaceManager:
             "compiled": True,
             "project_id": project["project_id"],
             "project_name": project["name"],
-            "module_cards": [
-                dict(item)
-                for item in preview.get("module_cards", [])
-                if _clean_text(item.get("project_id")) == project_id
-            ],
-            "evidence_cards": [
-                dict(item)
-                for item in preview.get("evidence_cards", [])
-                if _clean_text(item.get("project_id")) == project_id
-            ],
-            "metric_evidence": [
-                dict(item)
-                for item in preview.get("metric_evidence", [])
-                if _clean_text(item.get("project_id")) == project_id
-            ],
-            "retrieval_units": [
-                dict(item)
-                for item in preview.get("retrieval_units", [])
-                if _clean_text(item.get("project_id")) == project_id
-            ],
+            "module_cards": [dict(item) for item in preview.get("module_cards", []) if _clean_text(item.get("project_id")) == project_id],
+            "evidence_cards": [dict(item) for item in preview.get("evidence_cards", []) if _clean_text(item.get("project_id")) == project_id],
+            "metric_evidence": [dict(item) for item in preview.get("metric_evidence", []) if _clean_text(item.get("project_id")) == project_id],
+            "retrieval_units": [dict(item) for item in preview.get("retrieval_units", []) if _clean_text(item.get("project_id")) == project_id],
             "terminology": list(preview.get("terminology", [])),
             "compiled_at": float(preview.get("compiled_at", 0.0) or 0.0),
         }
@@ -864,7 +898,83 @@ class WorkspaceManager:
             "retrieval_units": [],
             "terminology": [],
             "compiled_at": 0.0,
+            "filters": {
+                "project_id": "",
+                "artifact_kind": "",
+                "search": "",
+            },
+            "project_summaries": [],
         }
+
+    def _filter_preview_items(
+        self,
+        items: Any,
+        *,
+        project_id: str,
+        artifact_kind: str,
+        current_kind: str,
+        search: str,
+    ) -> list[dict[str, Any]]:
+        if artifact_kind and artifact_kind != current_kind:
+            return []
+        filtered: list[dict[str, Any]] = []
+        for raw in items if isinstance(items, list) else []:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            if project_id and _clean_text(item.get("project_id")) != project_id:
+                continue
+            if search and not self._preview_item_matches_search(item, search):
+                continue
+            filtered.append(item)
+        return filtered
+
+    def _preview_item_matches_search(self, item: dict[str, Any], search: str) -> bool:
+        haystacks: list[str] = []
+        for value in item.values():
+            if isinstance(value, list):
+                haystacks.extend(_clean_text(entry).lower() for entry in value if _clean_text(entry))
+            else:
+                text = _clean_text(value).lower()
+                if text:
+                    haystacks.append(text)
+        return any(search in text for text in haystacks)
+
+    def _build_workspace_preview_summaries(
+        self,
+        workspace: dict[str, Any],
+        *,
+        module_cards: list[dict[str, Any]],
+        evidence_cards: list[dict[str, Any]],
+        metric_evidence: list[dict[str, Any]],
+        retrieval_units: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        project_names = {
+            _clean_text(project.get("project_id")): _clean_text(project.get("name"))
+            for project in workspace.get("knowledge", {}).get("projects", [])
+            if isinstance(project, dict)
+        }
+        project_ids = [
+            project_id
+            for project_id in project_names
+            if any(
+                _clean_text(item.get("project_id")) == project_id
+                for item in module_cards + evidence_cards + metric_evidence + retrieval_units
+            )
+        ]
+        return [
+            {
+                "project_id": project_id,
+                "project_name": project_names.get(project_id, project_id),
+                "module_count": sum(1 for item in module_cards if _clean_text(item.get("project_id")) == project_id),
+                "evidence_count": sum(1 for item in evidence_cards if _clean_text(item.get("project_id")) == project_id),
+                "metric_count": sum(1 for item in metric_evidence if _clean_text(item.get("project_id")) == project_id),
+                "retrieval_unit_count": sum(
+                    1 for item in retrieval_units if _clean_text(item.get("project_id")) == project_id
+                ),
+            }
+            for project_id in project_ids
+        ]
 
     def _invalidate_compiled_artifacts(self, workspace: dict[str, Any]) -> None:
         workspace["compiled_knowledge"] = None

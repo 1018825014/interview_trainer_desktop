@@ -12,6 +12,9 @@ interface ProjectEditorProps {
   project: LibraryProjectRecord | null;
   compiledPreview: LibraryProjectCompiledPreviewRecord | null;
   onChange: (project: LibraryProjectRecord) => void;
+  onCreateDocument: () => void;
+  onSaveDocument: (document: LibraryDocumentRecord) => void;
+  onDeleteDocument: (document: LibraryDocumentRecord) => void;
   onSave: () => void;
   onDelete: () => void;
 }
@@ -28,34 +31,12 @@ function splitLines(value: string): string[] {
     .filter(Boolean);
 }
 
-function addBlankDocument(project: LibraryProjectRecord): LibraryProjectRecord {
-  const nextDocument: LibraryDocumentRecord = {
-    documentId: `draft-${Date.now()}`,
-    scope: "project",
-    title: "New Document",
-    path: `notes/${project.documents.length + 1}.md`,
-    content: "",
-    sourceKind: "manual",
-    sourcePath: "",
-    repoId: "",
-    updatedAt: Date.now() / 1000,
-  };
-  return { ...project, documents: [...project.documents, nextDocument] };
-}
-
 function updateDocument(project: LibraryProjectRecord, documentId: string, patch: Partial<LibraryDocumentRecord>): LibraryProjectRecord {
   return {
     ...project,
     documents: project.documents.map((document) =>
       document.documentId === documentId ? { ...document, ...patch } : document,
     ),
-  };
-}
-
-function deleteDocument(project: LibraryProjectRecord, documentId: string): LibraryProjectRecord {
-  return {
-    ...project,
-    documents: project.documents.filter((document) => document.documentId !== documentId),
   };
 }
 
@@ -168,7 +149,16 @@ function deleteManualRetrievalUnit(project: LibraryProjectRecord, unitId: string
   };
 }
 
-export function ProjectEditor({ project, compiledPreview, onChange, onSave, onDelete }: ProjectEditorProps) {
+export function ProjectEditor({
+  project,
+  compiledPreview,
+  onChange,
+  onCreateDocument,
+  onSaveDocument,
+  onDeleteDocument,
+  onSave,
+  onDelete,
+}: ProjectEditorProps) {
   if (!project) {
     return (
       <section className="library-editor">
@@ -552,7 +542,7 @@ export function ProjectEditor({ project, compiledPreview, onChange, onSave, onDe
           <strong>{project.documents.length}</strong>
         </div>
         <div className="action-row">
-          <button className="ghost small" onClick={() => onChange(addBlankDocument(project))}>
+          <button className="ghost small" onClick={onCreateDocument}>
             新增文档
           </button>
         </div>
@@ -590,7 +580,10 @@ export function ProjectEditor({ project, compiledPreview, onChange, onSave, onDe
               {document.repoId ? <span>repo {document.repoId.slice(0, 8)}</span> : null}
             </div>
             <div className="action-row">
-              <button className="ghost small" onClick={() => onChange(deleteDocument(project, document.documentId))}>
+              <button className="ghost accent small" onClick={() => onSaveDocument(document)}>
+                Save Doc
+              </button>
+              <button className="ghost small" onClick={() => onDeleteDocument(document)}>
                 删除文档
               </button>
             </div>

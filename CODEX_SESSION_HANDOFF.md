@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `51/51` passing
+- Backend tests: `52/52` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -112,9 +112,8 @@ Recommended current setup:
 
 - Multi-interviewer speaker separation inside the system stream is not implemented
 - Desktop library UX is now usable, but still lacks:
-  - document-specific CRUD surfaces
-  - repo reindex controls
-  - workspace-level compiled preview navigation and filtering polish
+  - richer authoring ergonomics for bulk editing evidence / retrieval units
+  - more polished workspace-level artifact browsing for very large libraries
 - Need more real-user testing on:
   - naturalness
   - latency tolerance
@@ -417,11 +416,33 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `51/51` passing
+- Stage 13 implemented:
+  - workspace-level compiled preview now supports backend filtering by:
+    - `project_id`
+    - `artifact_kind`
+    - `search`
+  - workspace preview API now returns lightweight `project_summaries` so the desktop app can browse artifact coverage per project
+  - desktop workspace editor now includes a real workspace-level compiled preview panel with:
+    - project filter
+    - artifact-kind filter
+    - keyword search
+    - filtered module / evidence / metric / retrieval-unit cards
+  - desktop document maintenance is now more direct:
+    - project documents support explicit create / save / delete actions through document CRUD APIs
+    - role documents support explicit create / save / delete actions through document CRUD APIs
+  - these direct actions no longer require bundling document edits into a full workspace or project save every time
+- Stage 13 verification:
+  - targeted backend tests:
+    - `test_library_api.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `52/52` passing
 - Recommended next implementation order:
-  1. workspace-level compiled preview navigation and filtering polish
-  2. direct document-asset persistence actions in the desktop editor
-  3. deeper answer naturalness tuning based on real interview transcripts
-  4. evidence / retrieval-unit authoring ergonomics and batch editing
+  1. deeper answer naturalness tuning based on real interview transcripts
+  2. evidence / retrieval-unit authoring ergonomics and batch editing
+  3. larger-library workspace preview UX polish
+  4. multi-project activation presets with faster compare / switch workflows
 
 ## Best next debugging tasks
 
