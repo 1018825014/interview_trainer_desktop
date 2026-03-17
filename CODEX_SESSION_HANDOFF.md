@@ -121,7 +121,9 @@ Recommended current setup:
 ## Knowledge-Library Thread Update
 
 - Thread focus: `local persistent multi-project knowledge library`
-- Current stage completed: design alignment
+- Current stage completed:
+  - design alignment
+  - Stage 1 persistent workspace foundation
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -140,12 +142,29 @@ Recommended current setup:
   - `docs/superpowers/specs/2026-03-17-persistent-knowledge-library-design.md`
 - Implementation plan written to:
   - `docs/superpowers/plans/2026-03-17-persistent-knowledge-library.md`
+- Stage 1 implemented:
+  - `WorkspaceManager` now supports persistent local storage via `SQLite`
+  - workspace data survives manager restart
+  - imported docs/code content now stores through `library_objects`
+  - project-level `repo_summaries` metadata is persisted and restored
+  - backend tests were updated to use temp storage instead of polluting the repo
+- New backend files added in Stage 1:
+  - `backend/src/interview_trainer/library_paths.py`
+  - `backend/src/interview_trainer/library_store.py`
+  - `backend/src/interview_trainer/library_repository.py`
+  - `backend/tests/test_library_store.py`
+  - `backend/tests/test_library_repository.py`
+- Stage 1 verification:
+  - backend unittest: `35/35` passing
+  - targeted persistence tests:
+    - `test_library_store.py`
+    - `test_library_repository.py`
+    - `test_workspace.py`
 - Recommended next implementation order:
-  1. persistent library storage and schema
-  2. multi-project / multi-repo / multi-document CRUD
-  3. compile and retrieval-unit generation
-  4. preset / overlay session payload activation
-  5. desktop library UI split and management flow
+  1. expand Stage 1 storage into true library CRUD endpoints and schema surfaces
+  2. compile and retrieval-unit generation
+  3. preset / overlay session payload activation
+  4. desktop library UI split and management flow
 
 ## Best next debugging tasks
 

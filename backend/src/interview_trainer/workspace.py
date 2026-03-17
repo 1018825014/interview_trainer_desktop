@@ -6,6 +6,7 @@ from uuid import uuid4
 from typing import Any
 
 from .knowledge import KnowledgeCompiler
+from .library_repository import LibraryRepository
 
 
 CODE_EXTENSIONS = {
@@ -45,9 +46,14 @@ def _clean_text(value: Any) -> str:
 
 
 class WorkspaceManager:
-    def __init__(self, compiler: KnowledgeCompiler | None = None) -> None:
+    def __init__(
+        self,
+        compiler: KnowledgeCompiler | None = None,
+        storage_root: Path | str | None = None,
+    ) -> None:
         self.compiler = compiler or KnowledgeCompiler()
-        self._workspaces: dict[str, dict[str, Any]] = {}
+        self.repository = LibraryRepository(storage_root=storage_root)
+        self._workspaces: dict[str, dict[str, Any]] = self.repository.load_workspaces()
 
     def list_workspaces(self) -> dict[str, Any]:
         workspaces = sorted(
@@ -70,6 +76,7 @@ class WorkspaceManager:
             "compile_summary": None,
         }
         self._workspaces[workspace_id] = workspace
+        self.repository.save_workspace(workspace)
         return self._serialize(workspace)
 
     def get_workspace(self, workspace_id: str) -> dict[str, Any]:
@@ -85,6 +92,7 @@ class WorkspaceManager:
             workspace["compiled_knowledge"] = None
             workspace["compile_summary"] = None
         workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
         return self._serialize(workspace)
 
     def compile_workspace(self, workspace_id: str) -> dict[str, Any]:
@@ -100,6 +108,7 @@ class WorkspaceManager:
             "code_chunks": sum(len(project.code_chunks) for project in compiled.projects),
         }
         workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
         return self._serialize(workspace)
 
     def import_path(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -153,6 +162,29 @@ class WorkspaceManager:
         workspace["compiled_knowledge"] = None
         workspace["compile_summary"] = None
         workspace["updated_at"] = time.time()
+        repo_summaries = project.setdefault("repo_summaries", [])
+        existing_repo = next(
+            (
+                item
+                for item in repo_summaries
+                if _clean_text(item.get("root_path")) == str(root)
+            ),
+            None,
+        )
+        repo_summary = {
+            "repo_id": _clean_text(existing_repo.get("repo_id")) if isinstance(existing_repo, dict) else str(uuid4()),
+            "label": project_name,
+            "root_path": str(root),
+            "status": "ready",
+            "last_scanned_at": workspace["updated_at"],
+            "imported_docs": len(docs),
+            "imported_code_files": len(code_files),
+        }
+        if isinstance(existing_repo, dict):
+            existing_repo.update(repo_summary)
+        else:
+            repo_summaries.append(repo_summary)
+        self.repository.save_workspace(workspace)
 
         result = self._serialize(workspace)
         result["import_summary"] = {
@@ -205,6 +237,19 @@ class WorkspaceManager:
         project = self._default_project(_clean_text(payload.get("name")) or "Interview Project")
         project["business_value"] = _clean_text(payload.get("business_value")) or project["business_value"]
         project["architecture"] = _clean_text(payload.get("architecture")) or project["architecture"]
+        project["repo_summaries"] = [
+            {
+                "repo_id": _clean_text(item.get("repo_id")) or str(uuid4()),
+                "label": _clean_text(item.get("label")) or _clean_text(item.get("root_path")) or "Imported Repo",
+                "root_path": _clean_text(item.get("root_path")),
+                "status": _clean_text(item.get("status")) or "ready",
+                "last_scanned_at": float(item.get("last_scanned_at", 0.0) or 0.0),
+                "imported_docs": int(item.get("imported_docs", 0) or 0),
+                "imported_code_files": int(item.get("imported_code_files", 0) or 0),
+            }
+            for item in payload.get("repo_summaries", [])
+            if isinstance(item, dict) and _clean_text(item.get("root_path"))
+        ]
         project["documents"] = [
             {
                 "path": _clean_text(item.get("path")),
@@ -228,6 +273,7 @@ class WorkspaceManager:
             "name": name,
             "business_value": "",
             "architecture": "",
+            "repo_summaries": [],
             "documents": [],
             "code_files": [],
         }
