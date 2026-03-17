@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import math
 import copy
 import json
 import threading
 import time
+import wave
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 from urllib import error, request
@@ -13,6 +15,7 @@ from uuid import uuid4
 from .audio import AudioCaptureConfig, AudioFrameEnvelope, AudioSessionManager
 from .config import TranscriptionSettings
 from .realtime_transcription import (
+    AlibabaRealtimeTranscriptionStream,
     OpenAIRealtimeTranscriptionStream,
     RealtimeChunkMetadata,
     RealtimeTranscriptDeltaEvent,
@@ -180,6 +183,7 @@ class LiveTranscriptionBridge:
     last_activity_at: float | None = None
     recent_transcripts: list[dict[str, Any]] = field(default_factory=list)
     last_answer: dict[str, Any] | None = None
+    last_prewarm: dict[str, Any] | None = None
     pending_turn_ids: list[str] = field(default_factory=list)
     last_signal: dict[str, Any] | None = None
     last_skip_reason: str = ""
@@ -211,6 +215,7 @@ class LiveTranscriptionBridge:
             "last_activity_at": self.last_activity_at,
             "recent_transcripts": copy.deepcopy(self.recent_transcripts),
             "last_answer": copy.deepcopy(self.last_answer),
+            "last_prewarm": copy.deepcopy(self.last_prewarm),
             "last_signal": copy.deepcopy(self.last_signal),
             "last_skip_reason": self.last_skip_reason,
             "source_state": {key: value.to_dict() for key, value in self.source_state.items()},
@@ -259,7 +264,9 @@ class TemplateTranscriptionProvider:
             text=text,
             confidence=0.61,
             language=language or "en",
-            notes=["Template ASR is active. Set INTERVIEW_TRAINER_ASR_PROVIDER=openai for real transcription."],
+            notes=[
+                "Template ASR is active. Set INTERVIEW_TRAINER_ASR_PROVIDER=openai or alibaba_realtime for real transcription."
+            ],
         )
 
 
@@ -364,6 +371,155 @@ class OpenAITranscriptionProvider:
         return {"text": str(parsed)}
 
 
+class AlibabaRealtimeChunkTranscriptionProvider:
+    provider_name = "alibaba_realtime"
+
+    def __init__(
+        self,
+        settings: TranscriptionSettings,
+        realtime_stream_factory: Callable[
+            [TranscriptionSettings, AudioSource, str, str],
+            RealtimeTranscriptionStream,
+        ],
+    ) -> None:
+        self.settings = settings
+        self.model_name = settings.model
+        self._realtime_stream_factory = realtime_stream_factory
+
+    def transcribe(
+        self,
+        *,
+        wav_bytes: bytes,
+        source: AudioSource,
+        language: str,
+        prompt: str,
+        text_override: str,
+    ) -> ProviderTranscript:
+        del text_override
+        pcm, sample_rate, channels, sample_width_bytes = self._extract_wav_pcm(wav_bytes)
+        stream = self._realtime_stream_factory(self.settings, source, language, prompt)
+        try:
+            stream.start()
+            texts: list[str] = []
+            confidences: list[float] = []
+            language_hint = language or self.settings.language or "unknown"
+            for segment in self._split_pcm_segments(
+                pcm=pcm,
+                sample_rate=sample_rate,
+                channels=channels,
+                sample_width_bytes=sample_width_bytes,
+            ):
+                metadata = RealtimeChunkMetadata(
+                    source=source,
+                    speaker=Speaker.INTERVIEWER if source == AudioSource.SYSTEM else Speaker.CANDIDATE,
+                    final=True,
+                    ts_start=segment["ts_start"],
+                    ts_end=segment["ts_end"],
+                    duration_ms=segment["duration_ms"],
+                    num_frames=1,
+                    language=language or self.settings.language,
+                    prompt=prompt,
+                    session_snapshot={},
+                    signal={},
+                    interview_session_id="",
+                    auto_tick_offset_s=0.0,
+                    turn_id="",
+                )
+                stream.enqueue_chunk(
+                    pcm=segment["pcm"],
+                    sample_rate=sample_rate,
+                    channels=channels,
+                    sample_width_bytes=sample_width_bytes,
+                    metadata=metadata,
+                )
+                event = self._wait_for_completed_event(stream, expected_duration_ms=segment["duration_ms"])
+                if event.error:
+                    raise RuntimeError(event.error)
+                if event.text.strip():
+                    texts.append(event.text.strip())
+                confidences.append(event.confidence)
+                if event.language:
+                    language_hint = event.language
+            return ProviderTranscript(
+                text=" ".join(texts).strip(),
+                confidence=(sum(confidences) / len(confidences)) if confidences else 0.0,
+                language=language_hint,
+                notes=["Chunk transcription via Alibaba realtime ASR (segmented for stability)."],
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Alibaba transcription failed: {exc}") from exc
+        finally:
+            stream.close()
+
+    @staticmethod
+    def _extract_wav_pcm(wav_bytes: bytes) -> tuple[bytes, int, int, int]:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+            return (
+                wav_file.readframes(wav_file.getnframes()),
+                wav_file.getframerate(),
+                wav_file.getnchannels(),
+                wav_file.getsampwidth(),
+            )
+
+    def _split_pcm_segments(
+        self,
+        *,
+        pcm: bytes,
+        sample_rate: int,
+        channels: int,
+        sample_width_bytes: int,
+    ) -> list[dict[str, Any]]:
+        bytes_per_frame = max(1, channels * sample_width_bytes)
+        if not pcm:
+            return [
+                {
+                    "pcm": b"",
+                    "ts_start": 0.0,
+                    "ts_end": 0.0,
+                    "duration_ms": 0.0,
+                }
+            ]
+        target_duration_ms = max(3000.0, self.settings.bridge_target_duration_ms)
+        frames_per_segment = max(1, int(sample_rate * target_duration_ms / 1000.0))
+        segments: list[dict[str, Any]] = []
+        total_frames = len(pcm) // bytes_per_frame
+        cursor_frames = 0
+        while cursor_frames < total_frames:
+            next_cursor_frames = min(total_frames, cursor_frames + frames_per_segment)
+            start_byte = cursor_frames * bytes_per_frame
+            end_byte = next_cursor_frames * bytes_per_frame
+            duration_ms = ((next_cursor_frames - cursor_frames) / max(sample_rate, 1)) * 1000.0
+            segments.append(
+                {
+                    "pcm": pcm[start_byte:end_byte],
+                    "ts_start": cursor_frames / max(sample_rate, 1),
+                    "ts_end": next_cursor_frames / max(sample_rate, 1),
+                    "duration_ms": duration_ms,
+                }
+            )
+            cursor_frames = next_cursor_frames
+        return segments
+
+    def _wait_for_completed_event(
+        self,
+        stream: RealtimeTranscriptionStream,
+        *,
+        expected_duration_ms: float,
+    ) -> RealtimeTranscriptEvent:
+        deadline = time.perf_counter() + max(
+            self.settings.realtime_drain_timeout_s,
+            2.0,
+            (expected_duration_ms / 1000.0) + 1.0,
+        )
+        completed: list[RealtimeTranscriptEvent] = []
+        while time.perf_counter() < deadline:
+            completed = stream.poll_completed(limit=1)
+            if completed:
+                return completed[0]
+            time.sleep(0.05)
+        raise RuntimeError("Alibaba chunk transcription timed out waiting for a result.")
+
+
 class AudioTranscriptionService:
     def __init__(
         self,
@@ -381,8 +537,8 @@ class AudioTranscriptionService:
         self.audio_sessions = audio_sessions
         self.interview_service = interview_service
         self.settings = settings or TranscriptionSettings.from_env()
-        self.provider = provider or self._build_provider(self.settings)
         self._realtime_stream_factory = realtime_stream_factory or self._default_realtime_stream_factory
+        self.provider = provider or self._build_provider(self.settings, self._realtime_stream_factory)
         self._lock = threading.RLock()
         self.bridges: dict[str, LiveTranscriptionBridge] = {}
         self._bridge_events: dict[str, threading.Event] = {}
@@ -569,7 +725,7 @@ class AudioTranscriptionService:
             language=str(payload.get("language") or self.settings.language).strip(),
             prompt=str(payload.get("prompt") or self.settings.prompt).strip(),
             auto_tick_offset_s=float(payload.get("auto_tick_offset_s", 1.0)),
-            active_asr_mode="realtime" if self.settings.use_openai_realtime else "chunk",
+            active_asr_mode="realtime" if self.settings.use_realtime_stream else "chunk",
         )
         bridge.source_state = {
             source.value: BridgeSourceState(
@@ -724,11 +880,13 @@ class AudioTranscriptionService:
             transcript = dict(result["transcript"])
             interview = result.get("interview", {})
             answer = interview.get("answer")
+            prewarm = interview.get("prewarm")
             bridge.partial_transcripts.pop(transcript["source"], None)
             source_state = bridge.source_state.get(transcript["source"])
             if source_state is not None:
                 source_state.partial_text = ""
                 source_state.partial_updated_at = None
+            bridge.last_prewarm = copy.deepcopy(prewarm) if prewarm else None
             if answer:
                 transcript["answer_turn_id"] = answer.get("turn_id", "")
                 transcript["answer_status"] = answer.get("status", "")
@@ -1028,7 +1186,7 @@ class AudioTranscriptionService:
         return results
 
     def _ensure_realtime_streams(self, bridge_id: str) -> None:
-        if not self.settings.use_openai_realtime:
+        if not self.settings.use_realtime_stream:
             return
         with self._lock:
             if bridge_id in self._bridge_streams:
@@ -1058,17 +1216,12 @@ class AudioTranscriptionService:
             self._bridge_streams[bridge_id] = created_streams
 
     def _maybe_prepare_realtime_streams(self, bridge_id: str) -> None:
-        if not self.settings.use_openai_realtime:
+        if not self.settings.use_realtime_stream:
             return
         try:
             self._ensure_realtime_streams(bridge_id)
         except Exception as exc:
-            with self._lock:
-                bridge = self.bridges.get(bridge_id)
-                if bridge is None:
-                    return
-                bridge.active_asr_mode = "chunk"
-                bridge.realtime_fallback_reason = str(exc)
+            self._fallback_bridge_to_chunk(bridge_id, str(exc))
 
     def _poll_bridge_streams(self, bridge_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -1079,11 +1232,15 @@ class AudioTranscriptionService:
         with self._lock:
             streams = list(self._bridge_streams.get(bridge_id, {}).values())
         results: list[dict[str, Any]] = []
-        for stream in streams:
-            for event in stream.poll_partials(limit=8):
-                results.append(self._build_realtime_partial_result(event))
-            for event in stream.poll_completed(limit=6):
-                results.append(self._build_realtime_result(event))
+        try:
+            for stream in streams:
+                for event in stream.poll_partials(limit=8):
+                    results.append(self._build_realtime_partial_result(event))
+                for event in stream.poll_completed(limit=6):
+                    results.append(self._build_realtime_result(event))
+        except Exception as exc:
+            self._fallback_bridge_to_chunk(bridge_id, str(exc))
+            return []
         return results
 
     def _drain_bridge_streams(self, bridge_id: str, *, timeout_s: float) -> list[dict[str, Any]]:
@@ -1108,6 +1265,19 @@ class AudioTranscriptionService:
             streams = self._bridge_streams.pop(bridge_id, {})
         for stream in streams.values():
             stream.close()
+
+    def _fallback_bridge_to_chunk(self, bridge_id: str, reason: str) -> None:
+        self._close_bridge_streams(bridge_id)
+        with self._lock:
+            bridge = self.bridges.get(bridge_id)
+            if bridge is None:
+                return
+            bridge.active_asr_mode = "chunk"
+            bridge.realtime_fallback_reason = reason
+            bridge.partial_transcripts.clear()
+            for source_state in bridge.source_state.values():
+                source_state.partial_text = ""
+                source_state.partial_updated_at = None
 
     def _enqueue_realtime_chunk(
         self,
@@ -1271,7 +1441,15 @@ class AudioTranscriptionService:
         return duration_ms
 
     @staticmethod
-    def _build_provider(settings: TranscriptionSettings) -> TranscriptionProvider:
+    def _build_provider(
+        settings: TranscriptionSettings,
+        realtime_stream_factory: Callable[
+            [TranscriptionSettings, AudioSource, str, str],
+            RealtimeTranscriptionStream,
+        ],
+    ) -> TranscriptionProvider:
+        if settings.use_alibaba_realtime:
+            return AlibabaRealtimeChunkTranscriptionProvider(settings, realtime_stream_factory)
         if settings.use_openai:
             return OpenAITranscriptionProvider(settings)
         return TemplateTranscriptionProvider()
@@ -1283,6 +1461,13 @@ class AudioTranscriptionService:
         language: str,
         prompt: str,
     ) -> RealtimeTranscriptionStream:
+        if settings.use_alibaba_realtime:
+            return AlibabaRealtimeTranscriptionStream(
+                settings,
+                source=source,
+                language=language,
+                prompt=prompt,
+            )
         return OpenAIRealtimeTranscriptionStream(
             settings,
             source=source,

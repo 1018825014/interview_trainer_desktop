@@ -92,6 +92,15 @@ class DraftFutures:
     starter_stream_state: StarterStreamState | None = None
 
 
+@dataclass(slots=True)
+class StarterPrewarm:
+    turn_id: str
+    question: str
+    starter_future: Future[DraftOutcome]
+    started_at: float
+    starter_stream_state: StarterStreamState | None = None
+
+
 class TemplateLLMProvider:
     """Deterministic fallback provider until a real model adapter is wired in."""
 
@@ -497,6 +506,9 @@ class DualDraftComposer:
         self.smart_provider = smart_provider
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="draft-composer")
 
+    def shutdown(self, *, wait: bool = True) -> None:
+        self._executor.shutdown(wait=wait, cancel_futures=False)
+
     def start(
         self,
         *,
@@ -533,6 +545,72 @@ class DualDraftComposer:
             full_future=self._executor.submit(self._timed_call, self.smart_provider.full, **common),
             started_at=time.perf_counter(),
             starter_stream_state=starter_stream_state,
+        )
+
+    def start_starter_prewarm(
+        self,
+        *,
+        turn_id: str,
+        question: str,
+        route: ContextRoute,
+        pack: KnowledgePack,
+        knowledge: CompiledKnowledge,
+        briefing: SessionBriefing,
+        candidate_history: list[str],
+    ) -> StarterPrewarm:
+        del knowledge
+        starter_stream_state = StarterStreamState()
+        common = {
+            "turn_id": turn_id,
+            "question": question,
+            "route": route,
+            "pack": pack,
+            "briefing": briefing,
+            "candidate_history": candidate_history,
+        }
+        return StarterPrewarm(
+            turn_id=turn_id,
+            question=question,
+            starter_future=self._executor.submit(
+                self._timed_call,
+                self.fast_provider.starter,
+                **common,
+                stream_state=starter_stream_state,
+            ),
+            started_at=time.perf_counter(),
+            starter_stream_state=starter_stream_state,
+        )
+
+    def start_with_existing_starter(
+        self,
+        *,
+        prewarm: StarterPrewarm,
+        route: ContextRoute,
+        pack: KnowledgePack,
+        knowledge: CompiledKnowledge,
+        briefing: SessionBriefing,
+        candidate_history: list[str],
+        answer_plan: AnswerPlan | None = None,
+        answer_state: AnswerState | None = None,
+    ) -> DraftFutures:
+        del knowledge
+        return DraftFutures(
+            turn_id=prewarm.turn_id,
+            starter_future=prewarm.starter_future,
+            full_future=self._executor.submit(
+                self._timed_call,
+                self.smart_provider.full,
+                turn_id=prewarm.turn_id,
+                question=prewarm.question,
+                route=route,
+                pack=pack,
+                briefing=briefing,
+                candidate_history=candidate_history,
+                answer_plan=answer_plan,
+                answer_state=answer_state,
+            ),
+            started_at=prewarm.started_at,
+            starter_stream_state=prewarm.starter_stream_state,
         )
 
     def collect_ready(self, futures: DraftFutures) -> dict[str, DraftOutcome]:

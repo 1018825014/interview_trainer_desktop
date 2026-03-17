@@ -45,6 +45,17 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/api/settings/generation")
+    def get_generation_settings() -> dict[str, Any]:
+        return service.get_generation_settings()
+
+    @app.put("/api/settings/generation")
+    def update_generation_settings(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return service.update_generation_settings(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/audio/capabilities")
     def audio_capabilities() -> dict[str, Any]:
         capabilities = probe_audio_capabilities_safe()

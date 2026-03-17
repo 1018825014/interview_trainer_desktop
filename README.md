@@ -225,6 +225,20 @@ set INTERVIEW_TRAINER_ASR_REALTIME_BETA_HEADER=realtime=v1
 set OPENAI_BASE_URL=https://subrouter.ai/v1
 ```
 
+For live bridge streaming via Alibaba Cloud realtime ASR:
+
+```powershell
+set INTERVIEW_TRAINER_ASR_PROVIDER=alibaba_realtime
+set INTERVIEW_TRAINER_ALIBABA_API_KEY=your-dashscope-key
+set INTERVIEW_TRAINER_ALIBABA_WS_URL=wss://dashscope.aliyuncs.com/api-ws/v1/inference
+set INTERVIEW_TRAINER_ASR_MODEL=fun-asr-realtime-2026-02-28
+set INTERVIEW_TRAINER_ASR_LANGUAGE=zh
+set INTERVIEW_TRAINER_ALIBABA_VOCABULARY_ID=your-agent-interview-vocabulary-id
+set INTERVIEW_TRAINER_ASR_REALTIME_CONNECT_TIMEOUT_S=10
+set INTERVIEW_TRAINER_ASR_REALTIME_RECV_TIMEOUT_S=0.05
+set INTERVIEW_TRAINER_ASR_REALTIME_DRAIN_TIMEOUT_S=1.2
+```
+
 Notes:
 
 - `ChatGPT Plus` does not provide API quota for these calls
@@ -235,6 +249,8 @@ Notes:
 - direct `POST /api/audio/sessions/{audio_session_id}/transcribe` stays on chunked transcription even when `INTERVIEW_TRAINER_ASR_PROVIDER=openai_realtime`
 - the live bridge uses local VAD/buffering to decide chunk boundaries, then sends those chunks over a persistent Realtime WebSocket
 - when Realtime is enabled, the bridge also exposes `partial_transcripts` so the UI can show live incremental text before the final transcript lands
+- `INTERVIEW_TRAINER_ASR_PROVIDER=alibaba_realtime` now also covers direct chunk transcription and realtime fallback chunks by using a one-shot Alibaba realtime ASR call
+- for interview terminology accuracy on Alibaba ASR, create a custom vocabulary in DashScope and set `INTERVIEW_TRAINER_ALIBABA_VOCABULARY_ID`
 
 ### Optional audio dependencies
 

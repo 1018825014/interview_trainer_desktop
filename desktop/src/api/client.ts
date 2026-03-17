@@ -36,6 +36,23 @@ export async function fetchAudioRecommendation(baseUrl: string) {
   });
 }
 
+export async function getGenerationSettings(baseUrl: string) {
+  return requestJson(`${baseUrl}/api/settings/generation`, {
+    errorMessage: "Failed to load generation settings",
+  });
+}
+
+export async function updateGenerationSettings(
+  baseUrl: string,
+  payload: Record<string, unknown>,
+) {
+  return requestJson(`${baseUrl}/api/settings/generation`, {
+    method: "PUT",
+    payload,
+    errorMessage: "Failed to update generation settings",
+  });
+}
+
 export async function fetchAudioCapabilities(baseUrl: string) {
   return requestJson(`${baseUrl}/api/audio/capabilities`, {
     errorMessage: "Failed to load audio capabilities",

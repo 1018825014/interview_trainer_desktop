@@ -6,6 +6,7 @@ import {
   fetchAudioCapabilities,
   fetchAudioRecommendation,
   getAnswer,
+  getGenerationSettings,
   getLiveBridge,
   pingBackend,
   pushAudioFrame,
@@ -14,6 +15,7 @@ import {
   stopLiveBridge,
   tickSession,
   transcribeAudioSession,
+  updateGenerationSettings,
 } from "./api/client";
 import { LibraryPanel } from "./components/library/LibraryPanel";
 import {
@@ -36,9 +38,11 @@ import {
   AudioSessionView,
   AudioTranscriptionView,
   CorrectionSuggestionView,
+  GenerationSettingsView,
   LibrarySessionPayload,
   LiveBridgeView,
   PartialTranscriptView,
+  PrewarmView,
   SessionBriefView,
   TranscriptFeedItem,
 } from "./types";
@@ -61,7 +65,13 @@ function App() {
   const [lastTranscription, setLastTranscription] = useState<AudioTranscriptionView | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptFeedItem[]>(sampleTranscripts);
   const [partialTranscripts, setPartialTranscripts] = useState<PartialTranscriptView[]>([]);
+  const [prewarm, setPrewarm] = useState<PrewarmView | null>(null);
   const [answer, setAnswer] = useState<AnswerView>(sampleAnswer);
+  const [generationSettings, setGenerationSettings] = useState<GenerationSettingsView | null>(null);
+  const [selectedFastPreset, setSelectedFastPreset] = useState("qwen3.5-flash");
+  const [fastThinkingEnabled, setFastThinkingEnabled] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState("Waiting for backend");
+  const [generationSaving, setGenerationSaving] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionSuggestionView[]>(sampleCorrections);
   const [errorMessage, setErrorMessage] = useState("");
   const backendBaseUrl = window.interviewTrainer?.backendBaseUrl ?? "http://127.0.0.1:8000";
@@ -119,6 +129,33 @@ function App() {
     };
   }, [backendOnline, backendBaseUrl, audioFetchedAt]);
 
+  useEffect(() => {
+    if (!backendOnline) {
+      return;
+    }
+    let cancelled = false;
+    const loadGenerationSettings = async () => {
+      try {
+        const payload = (await getGenerationSettings(backendBaseUrl)) as GenerationSettingsView;
+        if (cancelled) {
+          return;
+        }
+        setGenerationSettings(payload);
+        setSelectedFastPreset(resolveFastPresetSelection(payload));
+        setFastThinkingEnabled(Boolean(payload.fast_enable_thinking));
+        setGenerationStatus("Synced from backend");
+      } catch {
+        if (!cancelled) {
+          setGenerationStatus("Backend settings unavailable");
+        }
+      }
+    };
+    void loadGenerationSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendOnline, backendBaseUrl]);
+
   const deviceCatalog = useMemo(() => {
     const byBackend = new Map<string, AudioDeviceView[]>();
     for (const capability of audioCapabilities) {
@@ -156,6 +193,7 @@ function App() {
           setErrorMessage(latest.last_error);
         }
         setPartialTranscripts(latest.partial_transcripts ?? []);
+        setPrewarm(mapBackendPrewarm(latest.last_prewarm));
         if (latest.recent_transcripts.length > 0) {
           const recent = latest.recent_transcripts.slice(-6);
           setTranscripts(
@@ -213,6 +251,25 @@ function App() {
       return;
     }
     setAlwaysOnTop(nextValue);
+  }
+
+  async function handleSaveGenerationSettings() {
+    setErrorMessage("");
+    setGenerationSaving(true);
+    try {
+      const updated = (await updateGenerationSettings(backendBaseUrl, {
+        fast_preset: selectedFastPreset,
+        fast_enable_thinking: fastThinkingEnabled,
+      })) as GenerationSettingsView;
+      setGenerationSettings(updated);
+      setSelectedFastPreset(resolveFastPresetSelection(updated));
+      setFastThinkingEnabled(Boolean(updated.fast_enable_thinking));
+      setGenerationStatus("Fast lane updated");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to update fast lane settings");
+    } finally {
+      setGenerationSaving(false);
+    }
   }
 
   async function handleActivateLibrarySession(payload: LibrarySessionPayload) {
@@ -331,6 +388,7 @@ function App() {
       })) as LiveBridgeView;
       setLiveBridge(createdBridge);
       setPartialTranscripts(createdBridge.partial_transcripts ?? []);
+      setPrewarm(mapBackendPrewarm(createdBridge.last_prewarm));
       setDemoStatus("ready");
     } catch (error) {
       setDemoStatus("error");
@@ -347,6 +405,7 @@ function App() {
       const stopped = (await stopLiveBridge(backendBaseUrl, liveBridge.bridge_id)) as LiveBridgeView;
       setLiveBridge(stopped);
       setPartialTranscripts(stopped.partial_transcripts ?? []);
+      setPrewarm(mapBackendPrewarm(stopped.last_prewarm));
       if (stopped.last_answer) {
         const mapped = mapBackendAnswer(stopped.last_answer);
         setAnswer(mapped);
@@ -421,6 +480,7 @@ function App() {
 
       if (result.interview) {
         setCorrections((result.interview.corrections ?? []) as CorrectionSuggestionView[]);
+        setPrewarm(mapBackendPrewarm(result.interview.prewarm));
         if (result.interview.answer) {
           const mapped = mapBackendAnswer(result.interview.answer);
           setAnswer(mapped);
@@ -462,6 +522,7 @@ function App() {
         },
       ]);
       setCorrections((transcriptResponse.corrections ?? []) as CorrectionSuggestionView[]);
+      setPrewarm(mapBackendPrewarm(transcriptResponse.prewarm));
 
       if (immediateAnswer) {
         setAnswer(mapBackendAnswer(immediateAnswer));
@@ -506,6 +567,58 @@ function App() {
       </header>
 
       <main className="grid">
+        <section className="panel panel-generation">
+          <div className="panel-head">
+            <span>Answer Engine</span>
+            <strong>{generationSettings?.fast_model ?? "Not loaded"}</strong>
+          </div>
+          <div className="meta-card">
+            <div className="panel-head compact">
+              <span>Fast Lane</span>
+              <strong>{generationSettings?.fast_provider ?? "template"}</strong>
+            </div>
+            <p>
+              Base URL: <strong>{generationSettings?.fast_base_url ?? backendBaseUrl}</strong>
+            </p>
+            <p>
+              Current model: <strong>{generationSettings?.fast_model ?? "qwen3.5-flash"}</strong> | Thinking:{" "}
+              <strong>{formatThinkingMode(generationSettings?.fast_enable_thinking ?? null)}</strong>
+            </p>
+            <label>
+              Fast preset
+              <select value={selectedFastPreset} onChange={(event) => setSelectedFastPreset(event.target.value)}>
+                {(generationSettings?.fast_preset_options ?? defaultFastPresetOptions()).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.model}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={fastThinkingEnabled}
+                onChange={(event) => setFastThinkingEnabled(event.target.checked)}
+              />
+              <span>Enable thinking for fast lane</span>
+            </label>
+            <div className="action-row">
+              <button
+                className="ghost accent small"
+                disabled={!backendOnline || generationSaving}
+                onClick={handleSaveGenerationSettings}
+              >
+                {generationSaving ? "Saving..." : "Apply fast lane"}
+              </button>
+            </div>
+            <p className="backend-meta">{generationStatus}</p>
+            <ul className="note-list">
+              <li>Preset switching only updates the fast lane. Provider and base URL stay unchanged.</li>
+              <li>Changes apply to new answer jobs after the backend accepts the update.</li>
+            </ul>
+          </div>
+        </section>
+
         <LibraryPanel
           backendBaseUrl={backendBaseUrl}
           backendOnline={backendOnline}
@@ -707,9 +820,16 @@ function App() {
             <div className="route-banner">
               <span>实时桥接</span>
               <p>
-                {liveBridge.status} | {liveBridge.poll_interval_ms}ms poll | {liveBridge.cycles} cycles |{" "}
-                {liveBridge.transcripts_processed} transcripts
+                {liveBridge.status} | mode {liveBridge.active_asr_mode} | {liveBridge.poll_interval_ms}ms poll |{" "}
+                {liveBridge.cycles} cycles | {liveBridge.transcripts_processed} transcripts
               </p>
+            </div>
+          ) : null}
+
+          {liveBridge?.realtime_fallback_reason ? (
+            <div className="route-banner">
+              <span>ASR 回退</span>
+              <p>{liveBridge.realtime_fallback_reason}</p>
             </div>
           ) : null}
 
@@ -720,6 +840,17 @@ function App() {
                 {partialTranscripts
                   .map((item) => `${item.source}: ${item.text || "（监听中…）"}`)
                   .join(" | ")}
+              </p>
+            </div>
+          ) : null}
+
+          {prewarm ? (
+            <div className="route-banner">
+              <span>Starter Prewarm</span>
+              <p>
+                {prewarm.status} | turn {prewarm.turnId.slice(0, 8)} | stream {formatMetric(prewarm.starterStreamMs)} |
+                starter {formatMetric(prewarm.starterMs)} | {prewarm.textPreview || prewarm.question}
+                {prewarm.error ? ` | ${prewarm.error}` : ""}
               </p>
             </div>
           ) : null}
@@ -799,6 +930,9 @@ function App() {
             <span className="token token-outline">stream {formatMetric(answer.metrics.starterStreamMs)}</span>
             <span className="token token-outline">starter {formatMetric(answer.metrics.starterMs)}</span>
             <span className="token token-outline">full {formatMetric(answer.metrics.fullMs)}</span>
+            {answer.prewarmedStarter ? (
+              <span className="token token-outline">prewarmed starter</span>
+            ) : null}
             {answer.status === "starter_streaming" ? (
               <span className="token token-outline">starter 流式输出中</span>
             ) : null}
@@ -950,6 +1084,7 @@ function mapBackendAnswer(raw: any): AnswerView {
       evidenceRefs: full?.evidence_refs ?? [],
     },
     evidence: Array.from(evidenceIds),
+    prewarmedStarter: Boolean(raw.prewarmed_starter),
     metrics: {
       starterStreamMs: raw.metrics?.starter_stream_ms ?? null,
       starterMs: raw.metrics?.starter_ms ?? null,
@@ -957,6 +1092,56 @@ function mapBackendAnswer(raw: any): AnswerView {
     },
     error: raw.error ?? "",
   };
+}
+
+function mapBackendPrewarm(raw: any): PrewarmView | null {
+  if (!raw) {
+    return null;
+  }
+
+  return {
+    turnId: String(raw.turn_id ?? ""),
+    question: String(raw.question ?? ""),
+    status: String(raw.status ?? "warming") as PrewarmView["status"],
+    textPreview: String(raw.text_preview ?? ""),
+    starterStreamMs: raw.starter_stream_ms ?? null,
+    starterMs: raw.starter_ms ?? null,
+    error: String(raw.error ?? ""),
+  };
+}
+
+function defaultFastPresetOptions(): GenerationSettingsView["fast_preset_options"] {
+  return [
+    {
+      value: "qwen3.5-flash",
+      model: "qwen3.5-flash",
+      enable_thinking: false,
+    },
+    {
+      value: "qwen3.5-plus",
+      model: "qwen3.5-plus",
+      enable_thinking: false,
+    },
+  ];
+}
+
+function resolveFastPresetSelection(settings: GenerationSettingsView): string {
+  const options = settings.fast_preset_options ?? defaultFastPresetOptions();
+  if (settings.fast_preset && options.some((option) => option.value === settings.fast_preset)) {
+    return settings.fast_preset;
+  }
+  const matched = options.find((option) => option.model === settings.fast_model);
+  return matched?.value ?? options[0]?.value ?? "qwen3.5-flash";
+}
+
+function formatThinkingMode(value: boolean | null): string {
+  if (value === true) {
+    return "enabled";
+  }
+  if (value === false) {
+    return "disabled";
+  }
+  return "inherit";
 }
 
 export default App;

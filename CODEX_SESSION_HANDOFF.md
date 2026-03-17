@@ -40,6 +40,11 @@ The future spec records what still needs to be built next.
   - `audio session -> ASR -> interview session -> answer`
 - Partial transcripts for Realtime ASR
 - Adaptive gate + lightweight VAD
+- Starter prewarm:
+  - interviewer partial transcripts can prewarm a `starter`
+  - locked questions can reuse the warmed fast-lane draft instead of always starting cold
+  - backend now exposes serialized prewarm state for session/runtime polling
+  - desktop UI now shows prewarm status, preview text, and warm-start metrics
 - Streaming starter answer state:
   - `pending`
   - `starter_streaming`
@@ -93,7 +98,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `52/52` passing
+- Backend tests: `57/57` passing (excluding `test_library_api`, which still needs `httpx` in the venv)
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -107,6 +112,14 @@ Recommended current setup:
   - `smart=gpt-5.4`
   - immediate starter works
   - `full` may still take longer than short debug windows
+- Runtime prewarm regression:
+  - partial interviewer transcript now prewarms the starter lane
+  - locked question reuses the warmed starter when the partial and final question match
+- Runtime prewarm visibility:
+  - session responses now include `prewarm`
+  - session snapshots include active `prewarms`
+  - live bridge responses include `last_prewarm`
+  - answer UI marks reused warm starts with `prewarmed starter`
 
 ## Known gaps
 

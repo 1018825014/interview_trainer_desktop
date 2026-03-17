@@ -1,4 +1,7 @@
 .DS_Store
+*.code-workspace
+.vscode/
+.worktrees/
 __pycache__/
 .pytest_cache/
 .venv/

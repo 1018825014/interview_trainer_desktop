@@ -71,6 +71,36 @@ class _StreamingStarterProvider:
         )
 
 
+class _PrewarmAwareProvider:
+    def __init__(self, *, starter_delay_s: float = 0.12, full_delay_s: float = 0.18) -> None:
+        self.starter_delay_s = starter_delay_s
+        self.full_delay_s = full_delay_s
+        self.starter_calls = 0
+        self.full_calls = 0
+
+    def starter(self, **kwargs) -> AnswerDraft:
+        self.starter_calls += 1
+        time.sleep(self.starter_delay_s)
+        return AnswerDraft(
+            level="starter",
+            turn_id=kwargs["turn_id"],
+            text=f"prewarmed starter for {kwargs['question']}",
+            bullets=["starter bullet"],
+            evidence_refs=["profile"],
+        )
+
+    def full(self, **kwargs) -> AnswerDraft:
+        self.full_calls += 1
+        time.sleep(self.full_delay_s)
+        return AnswerDraft(
+            level="full",
+            turn_id=kwargs["turn_id"],
+            text=f"full answer for {kwargs['question']}",
+            bullets=["full bullet"],
+            evidence_refs=["profile"],
+        )
+
+
 class InterviewTrainerServiceTests(unittest.TestCase):
     def test_answer_payload_includes_answer_plan_and_state(self) -> None:
         service = InterviewTrainerService(
@@ -254,6 +284,140 @@ class InterviewTrainerServiceTests(unittest.TestCase):
         self.assertTrue(seen["drafts"]["starter"].get("streaming"))
         self.assertIsNotNone(seen["metrics"]["starter_stream_ms"])
         self.assertIn("流式起手句", seen["drafts"]["starter"]["text"])
+
+    def test_partial_interviewer_transcript_can_prewarm_starter(self) -> None:
+        provider = _PrewarmAwareProvider()
+        service = InterviewTrainerService(
+            composer=DualDraftComposer(
+                fast_provider=provider,
+                smart_provider=provider,
+            )
+        )
+        session = service.create_session(
+            {
+                "knowledge": {
+                    "projects": [
+                        {
+                            "name": "AgentOps Console",
+                            "documents": [{"content": "Agent workflow builder with tracing and evaluation."}],
+                            "code_files": [{"path": "src/orchestrator/workflow.py", "content": "def run(): pass"}],
+                        }
+                    ]
+                },
+                "briefing": {"company": "Test", "business_context": "Agent", "job_description": "agent latency evaluation"},
+            }
+        )
+        session_id = session["session_id"]
+
+        partial = "Introduce one agent project you built and explain the architecture"
+        partial_response = service.handle_transcript(
+            session_id,
+            {
+                "speaker": "interviewer",
+                "text": partial,
+                "final": False,
+                "confidence": 0.84,
+                "ts_start": 0.0,
+                "ts_end": 0.7,
+            },
+        )
+        self.assertIsNotNone(partial_response["prewarm"])
+        self.assertEqual(partial_response["prewarm"]["turn_id"], partial_response["turn"]["turn_id"])
+        self.assertIn(partial_response["prewarm"]["status"], {"warming", "streaming"})
+        time.sleep(0.14)
+        service.handle_transcript(
+            session_id,
+            {
+                "speaker": "interviewer",
+                "text": "and the main tradeoffs.",
+                "final": True,
+                "confidence": 0.97,
+                "ts_start": 0.7,
+                "ts_end": 1.4,
+            },
+        )
+
+        response = service.tick_session(session_id, 2.5)
+        answer = response["answer"]
+        self.assertTrue(answer["prewarmed_starter"])
+        self.assertEqual(provider.starter_calls, 1)
+        self.assertIn(answer["status"], {"starter_ready", "complete"})
+        self.assertIn("starter", answer["drafts"])
+        self.assertIn("architecture", answer["drafts"]["starter"]["text"])
+
+        final_state = answer
+        for _ in range(10):
+            if provider.full_calls >= 1:
+                break
+            time.sleep(0.02)
+            final_state = service.get_answer(session_id, answer["turn_id"])
+
+        self.assertGreaterEqual(provider.full_calls, 1)
+        self.assertIn(final_state["status"], {"starter_ready", "complete"})
+
+    def test_stale_prewarm_is_pruned_when_new_turn_starts(self) -> None:
+        provider = _PrewarmAwareProvider(starter_delay_s=0.3, full_delay_s=0.3)
+        service = InterviewTrainerService(
+            composer=DualDraftComposer(
+                fast_provider=provider,
+                smart_provider=provider,
+            )
+        )
+        session = service.create_session(
+            {
+                "knowledge": {
+                    "projects": [
+                        {
+                            "name": "AgentOps Console",
+                            "documents": [{"content": "Agent workflow builder with tracing and evaluation."}],
+                            "code_files": [{"path": "src/orchestrator/workflow.py", "content": "def run(): pass"}],
+                        }
+                    ]
+                },
+                "briefing": {"company": "Test", "business_context": "Agent", "job_description": "agent latency evaluation"},
+            }
+        )
+        session_id = session["session_id"]
+
+        service.handle_transcript(
+            session_id,
+            {
+                "speaker": "interviewer",
+                "text": "Introduce one agent project you built and explain the architecture in detail.",
+                "final": False,
+                "confidence": 0.82,
+                "ts_start": 0.0,
+                "ts_end": 0.7,
+            },
+        )
+        session_snapshot = service.get_session(session_id)
+        self.assertEqual(len(session_snapshot["prewarms"]), 1)
+
+        service.handle_transcript(
+            session_id,
+            {
+                "speaker": "candidate",
+                "text": "Let me think for a second.",
+                "final": True,
+                "confidence": 0.91,
+                "ts_start": 1.6,
+                "ts_end": 1.8,
+            },
+        )
+        service.handle_transcript(
+            session_id,
+            {
+                "speaker": "interviewer",
+                "text": "Thanks.",
+                "final": True,
+                "confidence": 0.97,
+                "ts_start": 3.0,
+                "ts_end": 3.2,
+            },
+        )
+
+        session_snapshot = service.get_session(session_id)
+        self.assertEqual(session_snapshot["prewarms"], [])
 
 
 if __name__ == "__main__":
