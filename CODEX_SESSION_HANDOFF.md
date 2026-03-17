@@ -118,6 +118,33 @@ Recommended current setup:
   - follow-up consistency
   - project-specific answer quality
 
+## Knowledge-Library Thread Update
+
+- Thread focus: `local persistent multi-project knowledge library`
+- Current stage completed: design alignment
+- Design direction chosen:
+  - local hybrid storage: `SQLite + library_objects/`
+  - long-term library separated from interview-specific overlays
+  - multiple workspaces, projects, repos, documents, presets, and compiled bundles
+  - runtime answer-control layer built around:
+    - `QuestionIntent`
+    - `AnswerPlan`
+    - `AnswerState`
+    - typed `RetrievalUnit`
+    - `EvidenceCard / MetricEvidence`
+- Explicitly out of scope for this thread:
+  - audio capture changes
+  - ASR optimization
+  - live bridge feature work
+- Design spec written to:
+  - `docs/superpowers/specs/2026-03-17-persistent-knowledge-library-design.md`
+- Recommended next implementation order:
+  1. persistent library storage and schema
+  2. multi-project / multi-repo / multi-document CRUD
+  3. compile and retrieval-unit generation
+  4. preset / overlay session payload activation
+  5. desktop library UI split and management flow
+
 ## Best next debugging tasks
 
 1. Run the backend locally and verify API endpoints.
