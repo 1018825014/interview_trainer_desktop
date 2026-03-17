@@ -571,7 +571,7 @@ class AudioTranscriptionService:
             language=str(payload.get("language") or self.settings.language).strip(),
             prompt=str(payload.get("prompt") or self.settings.prompt).strip(),
             auto_tick_offset_s=float(payload.get("auto_tick_offset_s", 1.0)),
-            active_asr_mode="realtime" if self.settings.use_openai_realtime else "chunk",
+            active_asr_mode="realtime" if self.settings.use_realtime_stream else "chunk",
         )
         bridge.source_state = {
             source.value: BridgeSourceState(
@@ -1032,7 +1032,7 @@ class AudioTranscriptionService:
         return results
 
     def _ensure_realtime_streams(self, bridge_id: str) -> None:
-        if not self.settings.use_openai_realtime:
+        if not self.settings.use_realtime_stream:
             return
         with self._lock:
             if bridge_id in self._bridge_streams:
@@ -1062,7 +1062,7 @@ class AudioTranscriptionService:
             self._bridge_streams[bridge_id] = created_streams
 
     def _maybe_prepare_realtime_streams(self, bridge_id: str) -> None:
-        if not self.settings.use_openai_realtime:
+        if not self.settings.use_realtime_stream:
             return
         try:
             self._ensure_realtime_streams(bridge_id)

@@ -120,6 +120,11 @@ class _ImmediateRealtimeStream:
         self.closed = True
 
 
+class _AlibabaImmediateRealtimeStream(_ImmediateRealtimeStream):
+    provider_name = "alibaba_realtime"
+    model_name = "fun-asr-realtime-2026-02-28"
+
+
 class _FakeResponse:
     def __init__(self, payload: str) -> None:
         self.payload = payload.encode("utf-8")
@@ -518,6 +523,93 @@ class AudioTranscriptionServiceTests(unittest.TestCase):
         self.assertIn("timed out", stopped["realtime_fallback_reason"])
         self.assertGreaterEqual(stopped["transcripts_processed"], 1)
         self.assertEqual(provider.call_count, 1)
+
+    def test_live_bridge_can_use_alibaba_realtime_streams(self) -> None:
+        audio_sessions = AudioSessionManager()
+        audio_session = audio_sessions.create_session({"transport": "manual", "sample_rate": 16000, "chunk_ms": 200})
+        audio_session_id = audio_session["session_id"]
+        audio_sessions.start_session(audio_session_id)
+
+        interview_service = InterviewTrainerService(settings=GenerationSettings(provider="template"))
+        interview_session = interview_service.create_session(
+            {
+                "knowledge": {
+                    "projects": [
+                        {
+                            "name": "AgentOps Console",
+                            "documents": [{"content": "Agent workflow builder with tracing and evaluation."}],
+                            "code_files": [{"path": "src/workflow.py", "content": "def run():\n    return True\n"}],
+                        }
+                    ]
+                },
+                "briefing": {
+                    "company": "Test AI",
+                    "business_context": "Agent tooling",
+                    "job_description": "Need agent system design and latency tradeoffs.",
+                },
+            }
+        )
+
+        provider = _StaticProvider("unused chunk provider")
+        created_streams: dict[str, _AlibabaImmediateRealtimeStream] = {}
+
+        def realtime_factory(settings, source, language, prompt):
+            del settings, language, prompt
+            stream = _AlibabaImmediateRealtimeStream(source)
+            created_streams[source.value] = stream
+            return stream
+
+        transcriber = AudioTranscriptionService(
+            audio_sessions,
+            interview_service=interview_service,
+            settings=TranscriptionSettings(provider="alibaba_realtime", alibaba_api_key="test-key"),
+            provider=provider,
+            realtime_stream_factory=realtime_factory,
+        )
+        bridge = transcriber.create_live_bridge(
+            {
+                "audio_session_id": audio_session_id,
+                "session_id": interview_session["session_id"],
+                "sources": ["system", "mic"],
+                "poll_interval_ms": 80,
+                "max_frames_per_chunk": 2,
+                "auto_start": True,
+            }
+        )
+
+        self.assertEqual(bridge["active_asr_mode"], "realtime")
+
+        audio_sessions.push_frame(
+            audio_session_id,
+            {
+                "source": "system",
+                "pcm_base64": base64.b64encode(_speech_pcm(samples=3200)).decode("ascii"),
+                "ts": 12.0,
+            },
+        )
+        audio_sessions.push_frame(
+            audio_session_id,
+            {
+                "source": "mic",
+                "pcm_base64": base64.b64encode(_speech_pcm(amplitude=1800, samples=3200, switch_every=10)).decode("ascii"),
+                "ts": 12.3,
+            },
+        )
+        deadline = time.time() + 1.0
+        running = transcriber.get_live_bridge(bridge["bridge_id"])
+        while time.time() < deadline and not running["partial_transcripts"]:
+            time.sleep(0.05)
+            running = transcriber.get_live_bridge(bridge["bridge_id"])
+        self.assertTrue(running["partial_transcripts"])
+        time.sleep(0.35)
+        stopped = transcriber.stop_live_bridge(bridge["bridge_id"])
+
+        self.assertGreaterEqual(stopped["transcripts_processed"], 2)
+        self.assertEqual(provider.call_count, 0)
+        self.assertIn("alibaba_realtime", {item["provider"] for item in stopped["recent_transcripts"]})
+        self.assertTrue(created_streams["system"].started)
+        self.assertTrue(created_streams["system"].closed)
+        self.assertTrue(created_streams["mic"].closed)
 
 
 class OpenAITranscriptionProviderTests(unittest.TestCase):
