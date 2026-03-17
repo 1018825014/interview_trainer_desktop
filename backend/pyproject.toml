@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "interview-trainer-backend"
+version = "0.1.0"
+description = "Backend engine for the Windows interview trainer MVP"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+]
+
+[project.optional-dependencies]
+audio = [
+  "PyAudioWPatch>=0.2.12.8",
+  "sounddevice>=0.5,<1.0",
+]
+realtime = [
+  "websocket-client>=1.8,<2.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
