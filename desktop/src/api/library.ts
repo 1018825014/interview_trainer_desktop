@@ -40,15 +40,29 @@ function mapProfile(raw: any): LibraryProfileRecord {
 
 function mapRoleDocument(raw: any): LibraryRoleDocumentRecord {
   return {
+    documentId: asString(raw?.document_id),
+    scope: "role",
     title: asString(raw?.title, "Role Notes"),
+    path: asString(raw?.path),
     content: asString(raw?.content),
+    sourceKind: asString(raw?.source_kind, "manual"),
+    sourcePath: asString(raw?.source_path),
+    repoId: asString(raw?.repo_id),
+    updatedAt: asNumber(raw?.updated_at),
   };
 }
 
 function mapDocument(raw: any): LibraryDocumentRecord {
   return {
+    documentId: asString(raw?.document_id),
+    scope: "project",
+    title: asString(raw?.title, "Project Document"),
     path: asString(raw?.path),
     content: asString(raw?.content),
+    sourceKind: asString(raw?.source_kind, "manual"),
+    sourcePath: asString(raw?.source_path),
+    repoId: asString(raw?.repo_id),
+    updatedAt: asNumber(raw?.updated_at),
   };
 }
 
@@ -56,6 +70,9 @@ function mapCodeFile(raw: any): LibraryCodeFileRecord {
   return {
     path: asString(raw?.path, "src/main.py"),
     content: asString(raw?.content),
+    sourceKind: asString(raw?.source_kind, "manual"),
+    sourcePath: asString(raw?.source_path),
+    repoId: asString(raw?.repo_id),
   };
 }
 
@@ -272,6 +289,29 @@ export async function deleteLibraryProject(baseUrl: string, projectId: string): 
   });
 }
 
+export async function listLibraryProjectDocuments(
+  baseUrl: string,
+  projectId: string,
+): Promise<LibraryDocumentRecord[]> {
+  const payload = await requestJson<{ documents?: unknown[] }>(`${baseUrl}/api/library/projects/${projectId}/documents`, {
+    errorMessage: "Failed to load project documents",
+  });
+  return Array.isArray(payload.documents) ? payload.documents.map(mapDocument) : [];
+}
+
+export async function createLibraryProjectDocument(
+  baseUrl: string,
+  projectId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryDocumentRecord> {
+  const document = await requestJson<any>(`${baseUrl}/api/library/projects/${projectId}/documents`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to create project document",
+  });
+  return mapDocument(document);
+}
+
 export async function importLibraryProjectPath(
   baseUrl: string,
   projectId: string,
@@ -296,6 +336,64 @@ export async function listLibraryProjectRepos(
     errorMessage: "Failed to load project repos",
   });
   return Array.isArray(payload.repos) ? payload.repos.map(mapRepoSummary) : [];
+}
+
+export async function reindexLibraryRepo(
+  baseUrl: string,
+  repoId: string,
+): Promise<{ workspace: LibraryWorkspaceRecord; importSummary: LibraryImportSummary | null }> {
+  const response = await requestJson<any>(`${baseUrl}/api/library/repos/${repoId}/reindex`, {
+    method: "POST",
+    payload: {},
+    errorMessage: "Failed to reindex repo",
+  });
+  return {
+    workspace: mapWorkspace(response),
+    importSummary: mapImportSummary(response?.import_summary),
+  };
+}
+
+export async function listLibraryRoleDocuments(
+  baseUrl: string,
+  workspaceId: string,
+): Promise<LibraryRoleDocumentRecord[]> {
+  const payload = await requestJson<{ documents?: unknown[] }>(`${baseUrl}/api/library/workspaces/${workspaceId}/role-documents`, {
+    errorMessage: "Failed to load role documents",
+  });
+  return Array.isArray(payload.documents) ? payload.documents.map(mapRoleDocument) : [];
+}
+
+export async function createLibraryRoleDocument(
+  baseUrl: string,
+  workspaceId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryRoleDocumentRecord> {
+  const document = await requestJson<any>(`${baseUrl}/api/library/workspaces/${workspaceId}/role-documents`, {
+    method: "POST",
+    payload,
+    errorMessage: "Failed to create role document",
+  });
+  return mapRoleDocument(document);
+}
+
+export async function updateLibraryDocument(
+  baseUrl: string,
+  documentId: string,
+  payload: Record<string, unknown>,
+): Promise<LibraryDocumentRecord | LibraryRoleDocumentRecord> {
+  const document = await requestJson<any>(`${baseUrl}/api/library/documents/${documentId}`, {
+    method: "PUT",
+    payload,
+    errorMessage: "Failed to update document",
+  });
+  return asString(document?.scope) === "role" ? mapRoleDocument(document) : mapDocument(document);
+}
+
+export async function deleteLibraryDocument(baseUrl: string, documentId: string): Promise<void> {
+  await requestJson(`${baseUrl}/api/library/documents/${documentId}`, {
+    method: "DELETE",
+    errorMessage: "Failed to delete document",
+  });
 }
 
 export async function createLibraryOverlay(

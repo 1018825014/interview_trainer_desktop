@@ -231,6 +231,20 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="project not found") from exc
 
+    @app.get("/api/library/projects/{project_id}/documents")
+    def list_library_project_documents(project_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_project_documents(project_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.post("/api/library/projects/{project_id}/documents")
+    def create_library_project_document(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.create_project_document(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
     @app.get("/api/library/projects/{project_id}/repos")
     def list_library_project_repos(project_id: str) -> dict[str, Any]:
         try:
@@ -246,6 +260,43 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
             raise HTTPException(status_code=404, detail="project not found") from exc
         except FileNotFoundError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/library/repos/{repo_id}/reindex")
+    def reindex_library_repo(repo_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            return workspace_manager.reindex_repo(repo_id, payload or {})
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="repo not found") from exc
+        except FileNotFoundError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/library/workspaces/{workspace_id}/role-documents")
+    def list_library_role_documents(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_role_documents(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.post("/api/library/workspaces/{workspace_id}/role-documents")
+    def create_library_role_document(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.create_role_document(workspace_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.put("/api/library/documents/{document_id}")
+    def update_library_document(document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.update_document(document_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="document not found") from exc
+
+    @app.delete("/api/library/documents/{document_id}")
+    def delete_library_document(document_id: str) -> dict[str, str]:
+        try:
+            return workspace_manager.delete_document(document_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="document not found") from exc
 
     @app.get("/api/library/workspaces/{workspace_id}/overlays")
     def list_library_overlays(workspace_id: str) -> dict[str, Any]:

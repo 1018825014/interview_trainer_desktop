@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import time
 from pathlib import Path, PurePosixPath
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from .knowledge import KnowledgeCompiler
 from .library_repository import LibraryRepository
@@ -39,11 +39,20 @@ DOC_EXTENSIONS = {
     ".pdf",
 }
 
+DEFAULT_PROJECT_DOCUMENT_TITLE = "Project Document"
+DEFAULT_ROLE_DOCUMENT_TITLE = "Role Document"
+
 
 def _clean_text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _content_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
 
 
 class WorkspaceManager:
@@ -87,6 +96,18 @@ class WorkspaceManager:
 
     def get_workspace(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
+        return self._serialize(workspace)
+
+    def update_workspace(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        if "name" in payload:
+            workspace["name"] = _clean_text(payload.get("name")) or workspace["name"]
+        if "knowledge" in payload:
+            workspace["knowledge"] = self._normalize_knowledge_payload(payload.get("knowledge", {}))
+            workspace["compiled_knowledge"] = None
+            workspace["compile_summary"] = None
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
         return self._serialize(workspace)
 
     def list_projects(self, workspace_id: str) -> dict[str, Any]:
@@ -138,21 +159,15 @@ class WorkspaceManager:
             project["interviewer_hooks"] = self._normalize_lines(payload.get("interviewer_hooks"))
         if "documents" in payload:
             project["documents"] = [
-                {
-                    "path": _clean_text(item.get("path")),
-                    "content": _clean_text(item.get("content")),
-                }
-                for item in payload.get("documents", [])
-                if isinstance(item, dict) and _clean_text(item.get("content"))
+                self._normalize_document_asset(item, scope="project", default_title=f"{DEFAULT_PROJECT_DOCUMENT_TITLE} {index}")
+                for index, item in enumerate(payload.get("documents", []), start=1)
+                if isinstance(item, dict) and _content_text(item.get("content")).strip()
             ]
         if "code_files" in payload:
             project["code_files"] = [
-                {
-                    "path": _clean_text(item.get("path")) or "src/main.py",
-                    "content": _clean_text(item.get("content")),
-                }
+                self._normalize_code_file(item)
                 for item in payload.get("code_files", [])
-                if isinstance(item, dict) and _clean_text(item.get("content"))
+                if isinstance(item, dict) and _content_text(item.get("content")).strip()
             ]
         workspace["compiled_knowledge"] = None
         workspace["compile_summary"] = None
@@ -170,6 +185,20 @@ class WorkspaceManager:
         self.repository.save_workspace(workspace)
         return {"status": "deleted", "project_id": project_id}
 
+    def list_project_documents(self, project_id: str) -> dict[str, Any]:
+        _, project = self._find_project(project_id)
+        return {"documents": [self._serialize_document(item) for item in project.get("documents", [])]}
+
+    def create_project_document(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, project = self._find_project(project_id)
+        document = self._normalize_document_asset(payload, scope="project")
+        project.setdefault("documents", []).append(document)
+        workspace["compiled_knowledge"] = None
+        workspace["compile_summary"] = None
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return self._serialize_document(document)
+
     def list_project_repos(self, project_id: str) -> dict[str, Any]:
         _, project = self._find_project(project_id)
         return {"repos": [dict(item) for item in project.get("repo_summaries", [])]}
@@ -177,6 +206,69 @@ class WorkspaceManager:
     def import_project_repo(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         workspace, project = self._find_project(project_id)
         return self._import_into_project(workspace, project, payload)
+
+    def reindex_repo(self, repo_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        workspace, project, repo_summary = self._find_repo(repo_id)
+        import_payload = dict(payload or {})
+        import_payload.setdefault("path", _clean_text(repo_summary.get("root_path")))
+        import_payload.setdefault("project_name", _clean_text(project.get("name")))
+        import_payload["repo_id"] = repo_id
+        return self._import_into_project(workspace, project, import_payload)
+
+    def list_role_documents(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        return {
+            "documents": [
+                self._serialize_document(item)
+                for item in workspace.get("knowledge", {}).get("role_documents", [])
+            ]
+        }
+
+    def create_role_document(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        document = self._normalize_document_asset(payload, scope="role")
+        workspace.setdefault("knowledge", {}).setdefault("role_documents", []).append(document)
+        workspace["compiled_knowledge"] = None
+        workspace["compile_summary"] = None
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return self._serialize_document(document)
+
+    def update_document(self, document_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, document = self._find_document(document_id)
+        if "title" in payload:
+            document["title"] = _clean_text(payload.get("title")) or document["title"]
+        if "path" in payload:
+            document["path"] = _clean_text(payload.get("path"))
+        if "content" in payload:
+            document["content"] = _content_text(payload.get("content"))
+        if "source_kind" in payload:
+            document["source_kind"] = _clean_text(payload.get("source_kind")) or document["source_kind"]
+        if "source_path" in payload:
+            document["source_path"] = _clean_text(payload.get("source_path"))
+        document["updated_at"] = time.time()
+        workspace["compiled_knowledge"] = None
+        workspace["compile_summary"] = None
+        workspace["updated_at"] = document["updated_at"]
+        self.repository.save_workspace(workspace)
+        return self._serialize_document(document)
+
+    def delete_document(self, document_id: str) -> dict[str, str]:
+        workspace, document = self._find_document(document_id)
+        role_documents = workspace.get("knowledge", {}).get("role_documents", [])
+        if document in role_documents:
+            workspace["knowledge"]["role_documents"] = [item for item in role_documents if item is not document]
+        else:
+            for project in workspace.get("knowledge", {}).get("projects", []):
+                documents = project.get("documents", [])
+                if document in documents:
+                    project["documents"] = [item for item in documents if item is not document]
+                    break
+        workspace["compiled_knowledge"] = None
+        workspace["compile_summary"] = None
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return {"status": "deleted", "document_id": document_id}
 
     def list_overlays(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
@@ -284,18 +376,6 @@ class WorkspaceManager:
         self.repository.save_workspace(workspace)
         return payload
 
-    def update_workspace(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        workspace = self._workspaces[workspace_id]
-        if "name" in payload:
-            workspace["name"] = _clean_text(payload.get("name")) or workspace["name"]
-        if "knowledge" in payload:
-            workspace["knowledge"] = self._normalize_knowledge_payload(payload.get("knowledge", {}))
-            workspace["compiled_knowledge"] = None
-            workspace["compile_summary"] = None
-        workspace["updated_at"] = time.time()
-        self.repository.save_workspace(workspace)
-        return self._serialize(workspace)
-
     def compile_workspace(self, workspace_id: str) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
         compiled = self.compiler.compile(workspace["knowledge"])
@@ -329,7 +409,17 @@ class WorkspaceManager:
         return {
             "workspace_id": workspace["workspace_id"],
             "name": workspace["name"],
-            "knowledge": workspace["knowledge"],
+            "knowledge": {
+                **workspace["knowledge"],
+                "projects": [
+                    self._serialize_project(project)
+                    for project in workspace["knowledge"].get("projects", [])
+                ],
+                "role_documents": [
+                    self._serialize_document(item)
+                    for item in workspace["knowledge"].get("role_documents", [])
+                ],
+            },
             "overlays": [self._serialize_overlay(item) for item in workspace.get("overlays", [])],
             "presets": [self._serialize_preset(item) for item in workspace.get("presets", [])],
             "compiled_bundles": [dict(item) for item in workspace.get("compiled_bundles", [])],
@@ -357,12 +447,9 @@ class WorkspaceManager:
                 if isinstance(project_input, dict)
             ],
             "role_documents": [
-                {
-                    "title": _clean_text(document.get("title")) or f"Role Document {index}",
-                    "content": _clean_text(document.get("content")),
-                }
+                self._normalize_document_asset(document, scope="role", default_title=f"{DEFAULT_ROLE_DOCUMENT_TITLE} {index}")
                 for index, document in enumerate(role_documents_input, start=1)
-                if isinstance(document, dict) and _clean_text(document.get("content"))
+                if isinstance(document, dict) and _content_text(document.get("content")).strip()
             ],
         }
 
@@ -393,20 +480,14 @@ class WorkspaceManager:
             if isinstance(item, dict) and _clean_text(item.get("root_path"))
         ]
         project["documents"] = [
-            {
-                "path": _clean_text(item.get("path")),
-                "content": _clean_text(item.get("content")),
-            }
-            for item in payload.get("documents", [])
-            if isinstance(item, dict) and _clean_text(item.get("content"))
+            self._normalize_document_asset(item, scope="project", default_title=f"{DEFAULT_PROJECT_DOCUMENT_TITLE} {index}")
+            for index, item in enumerate(payload.get("documents", []), start=1)
+            if isinstance(item, dict) and _content_text(item.get("content")).strip()
         ]
         project["code_files"] = [
-            {
-                "path": _clean_text(item.get("path")) or "src/main.py",
-                "content": _clean_text(item.get("content")),
-            }
+            self._normalize_code_file(item)
             for item in payload.get("code_files", [])
-            if isinstance(item, dict) and _clean_text(item.get("content"))
+            if isinstance(item, dict) and _content_text(item.get("content")).strip()
         ]
         return project
 
@@ -444,8 +525,8 @@ class WorkspaceManager:
             "upgrade_plan": list(project.get("upgrade_plan", [])),
             "interviewer_hooks": list(project.get("interviewer_hooks", [])),
             "repo_summaries": [dict(item) for item in project.get("repo_summaries", [])],
-            "documents": [dict(item) for item in project.get("documents", [])],
-            "code_files": [dict(item) for item in project.get("code_files", [])],
+            "documents": [self._serialize_document(item) for item in project.get("documents", [])],
+            "code_files": [self._serialize_code_file(item) for item in project.get("code_files", [])],
         }
 
     def _normalize_overlay(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -509,6 +590,59 @@ class WorkspaceManager:
             return [line.strip() for line in value.replace("\r", "").split("\n") if line.strip()]
         return []
 
+    def _normalize_document_asset(
+        self,
+        payload: dict[str, Any],
+        *,
+        scope: str,
+        default_title: str | None = None,
+    ) -> dict[str, Any]:
+        path = _clean_text(payload.get("path"))
+        title = _clean_text(payload.get("title")) or (Path(path).name if path else "") or (default_title or DEFAULT_PROJECT_DOCUMENT_TITLE)
+        now = time.time()
+        return {
+            "document_id": _clean_text(payload.get("document_id")) or str(uuid4()),
+            "scope": scope,
+            "title": title,
+            "path": path,
+            "content": _content_text(payload.get("content")),
+            "source_kind": _clean_text(payload.get("source_kind")) or "manual",
+            "source_path": _clean_text(payload.get("source_path")),
+            "repo_id": _clean_text(payload.get("repo_id")),
+            "updated_at": float(payload.get("updated_at", now) or now),
+        }
+
+    def _serialize_document(self, document: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "document_id": document.get("document_id", ""),
+            "scope": document.get("scope", "project"),
+            "title": document.get("title", ""),
+            "path": document.get("path", ""),
+            "content": document.get("content", ""),
+            "source_kind": document.get("source_kind", "manual"),
+            "source_path": document.get("source_path", ""),
+            "repo_id": document.get("repo_id", ""),
+            "updated_at": document.get("updated_at", 0.0),
+        }
+
+    def _normalize_code_file(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "path": _clean_text(payload.get("path")) or "src/main.py",
+            "content": _content_text(payload.get("content")),
+            "source_kind": _clean_text(payload.get("source_kind")) or "manual",
+            "source_path": _clean_text(payload.get("source_path")),
+            "repo_id": _clean_text(payload.get("repo_id")),
+        }
+
+    def _serialize_code_file(self, code_file: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "path": code_file.get("path", "src/main.py"),
+            "content": code_file.get("content", ""),
+            "source_kind": code_file.get("source_kind", "manual"),
+            "source_path": code_file.get("source_path", ""),
+            "repo_id": code_file.get("repo_id", ""),
+        }
+
     def _relative_path(self, root: Path, file_path: Path) -> str:
         if root.is_file():
             return root.name
@@ -539,6 +673,25 @@ class WorkspaceManager:
                     return workspace, preset
         raise KeyError(preset_id)
 
+    def _find_document(self, document_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        for workspace in self._workspaces.values():
+            for document in workspace.get("knowledge", {}).get("role_documents", []):
+                if _clean_text(document.get("document_id")) == document_id:
+                    return workspace, document
+            for project in workspace.get("knowledge", {}).get("projects", []):
+                for document in project.get("documents", []):
+                    if _clean_text(document.get("document_id")) == document_id:
+                        return workspace, document
+        raise KeyError(document_id)
+
+    def _find_repo(self, repo_id: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        for workspace in self._workspaces.values():
+            for project in workspace.get("knowledge", {}).get("projects", []):
+                for repo_summary in project.get("repo_summaries", []):
+                    if _clean_text(repo_summary.get("repo_id")) == repo_id:
+                        return workspace, project, repo_summary
+        raise KeyError(repo_id)
+
     def _import_into_project(
         self,
         workspace: dict[str, Any],
@@ -550,10 +703,22 @@ class WorkspaceManager:
             raise FileNotFoundError(f"Path not found: {root}")
 
         project_name = _clean_text(payload.get("project_name")) or _clean_text(project.get("name")) or root.name or "Imported Project"
+        requested_repo_id = _clean_text(payload.get("repo_id"))
         max_files = max(1, int(payload.get("max_files", 80)))
         max_chars = max(200, int(payload.get("max_chars_per_file", 12000)))
         docs: list[dict[str, Any]] = []
         code_files: list[dict[str, Any]] = []
+        repo_summaries = project.setdefault("repo_summaries", [])
+        existing_repo = next(
+            (
+                item
+                for item in repo_summaries
+                if (requested_repo_id and _clean_text(item.get("repo_id")) == requested_repo_id)
+                or _clean_text(item.get("root_path")) == str(root)
+            ),
+            None,
+        )
+        repo_id = _clean_text(existing_repo.get("repo_id")) if isinstance(existing_repo, dict) else requested_repo_id or str(uuid4())
 
         files = [root] if root.is_file() else sorted(item for item in root.rglob("*") if item.is_file())
         for file_path in files:
@@ -565,22 +730,50 @@ class WorkspaceManager:
             if len(docs) + len(code_files) >= max_files:
                 break
             try:
-                text = file_path.read_text(encoding="utf-8", errors="ignore").strip()
+                text = file_path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            if not text:
+            if not text.strip():
                 continue
             relative_path = self._relative_path(root, file_path)
             if len(text) > max_chars:
                 text = text[:max_chars] + "\n... [truncated]"
             if suffix in DOC_EXTENSIONS:
-                docs.append({"path": relative_path, "content": text})
+                docs.append(
+                    self._normalize_document_asset(
+                        {
+                            "title": Path(relative_path).name,
+                            "path": relative_path,
+                            "content": text,
+                            "source_kind": "repo_import",
+                            "source_path": str(root),
+                            "repo_id": repo_id,
+                        },
+                        scope="project",
+                    )
+                )
             else:
-                code_files.append({"path": relative_path, "content": text})
+                code_files.append(
+                    self._normalize_code_file(
+                        {
+                            "path": relative_path,
+                            "content": text,
+                            "source_kind": "repo_import",
+                            "source_path": str(root),
+                            "repo_id": repo_id,
+                        }
+                    )
+                )
 
         project["name"] = project_name or project.get("name", "")
-        project["documents"] = docs or project.get("documents", [])
-        project["code_files"] = code_files or project.get("code_files", [])
+        project["documents"] = [
+            item for item in project.get("documents", [])
+            if not self._is_repo_managed_document(item, repo_id)
+        ] + docs
+        project["code_files"] = [
+            item for item in project.get("code_files", [])
+            if not self._is_repo_managed_code_file(item, repo_id)
+        ] + code_files
         if "business_value" in payload:
             project["business_value"] = _clean_text(payload.get("business_value")) or project.get("business_value", "")
         if "architecture" in payload:
@@ -589,17 +782,8 @@ class WorkspaceManager:
         workspace["compiled_knowledge"] = None
         workspace["compile_summary"] = None
         workspace["updated_at"] = time.time()
-        repo_summaries = project.setdefault("repo_summaries", [])
-        existing_repo = next(
-            (
-                item
-                for item in repo_summaries
-                if _clean_text(item.get("root_path")) == str(root)
-            ),
-            None,
-        )
         repo_summary = {
-            "repo_id": _clean_text(existing_repo.get("repo_id")) if isinstance(existing_repo, dict) else str(uuid4()),
+            "repo_id": repo_id,
             "label": project_name,
             "root_path": str(root),
             "status": "ready",
@@ -621,6 +805,12 @@ class WorkspaceManager:
             "source_path": str(root),
         }
         return result
+
+    def _is_repo_managed_document(self, document: dict[str, Any], repo_id: str) -> bool:
+        return _clean_text(document.get("source_kind")) == "repo_import" and _clean_text(document.get("repo_id")) == repo_id
+
+    def _is_repo_managed_code_file(self, code_file: dict[str, Any], repo_id: str) -> bool:
+        return _clean_text(code_file.get("source_kind")) == "repo_import" and _clean_text(code_file.get("repo_id")) == repo_id
 
     def _upgrade_loaded_workspaces(self) -> None:
         changed = False
@@ -652,20 +842,19 @@ class WorkspaceManager:
             if "compiled_bundles" not in workspace:
                 workspace["compiled_bundles"] = []
                 changed = True
+            normalized_role_documents = [
+                self._normalize_document_asset(document, scope="role", default_title=f"{DEFAULT_ROLE_DOCUMENT_TITLE} {index}")
+                for index, document in enumerate(workspace.get("knowledge", {}).get("role_documents", []), start=1)
+                if isinstance(document, dict) and _content_text(document.get("content")).strip()
+            ]
+            if normalized_role_documents != workspace.get("knowledge", {}).get("role_documents", []):
+                workspace.setdefault("knowledge", {})["role_documents"] = normalized_role_documents
+                changed = True
             for project in workspace.get("knowledge", {}).get("projects", []):
                 if not _clean_text(project.get("project_id")):
                     project["project_id"] = str(uuid4())
                     changed = True
-                for field in (
-                    "pitch_30",
-                    "pitch_90",
-                    "key_metrics",
-                    "tradeoffs",
-                    "failure_cases",
-                    "limitations",
-                    "upgrade_plan",
-                    "interviewer_hooks",
-                ):
+                for field in ("pitch_30", "pitch_90", "key_metrics", "tradeoffs", "failure_cases", "limitations", "upgrade_plan", "interviewer_hooks"):
                     if field not in project:
                         project[field] = [] if field.endswith("s") or field in {"key_metrics", "tradeoffs"} else ""
                         changed = True
@@ -678,6 +867,22 @@ class WorkspaceManager:
                         changed = True
                 if "repo_summaries" not in project:
                     project["repo_summaries"] = []
+                    changed = True
+                normalized_documents = [
+                    self._normalize_document_asset(document, scope="project", default_title=f"{DEFAULT_PROJECT_DOCUMENT_TITLE} {index}")
+                    for index, document in enumerate(project.get("documents", []), start=1)
+                    if isinstance(document, dict) and _content_text(document.get("content")).strip()
+                ]
+                if normalized_documents != project.get("documents", []):
+                    project["documents"] = normalized_documents
+                    changed = True
+                normalized_code_files = [
+                    self._normalize_code_file(code_file)
+                    for code_file in project.get("code_files", [])
+                    if isinstance(code_file, dict) and _content_text(code_file.get("content")).strip()
+                ]
+                if normalized_code_files != project.get("code_files", []):
+                    project["code_files"] = normalized_code_files
                     changed = True
         if changed:
             for workspace in self._workspaces.values():

@@ -114,6 +114,101 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(payload["activation_summary"]["project_count"], 1)
         self.assertGreaterEqual(payload["activation_summary"]["retrieval_unit_count"], 1)
 
+    def test_library_document_assets_support_project_and_role_crud(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+
+            created = client.post(
+                f"/api/library/projects/{project['project_id']}/documents",
+                json={
+                    "title": "Design Notes",
+                    "path": "notes/design.md",
+                    "content": "Initial architecture notes",
+                },
+            ).json()
+            listing = client.get(f"/api/library/projects/{project['project_id']}/documents").json()
+            updated = client.put(
+                f"/api/library/documents/{created['document_id']}",
+                json={
+                    "title": "Architecture Notes",
+                    "content": "Updated architecture notes",
+                },
+            ).json()
+            created_role = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/role-documents",
+                json={
+                    "title": "Alibaba JD",
+                    "content": "Need agent platform experience",
+                },
+            ).json()
+            role_listing = client.get(
+                f"/api/library/workspaces/{workspace['workspace_id']}/role-documents"
+            ).json()
+            deleted = client.delete(f"/api/library/documents/{created['document_id']}").json()
+            listing_after_delete = client.get(f"/api/library/projects/{project['project_id']}/documents").json()
+
+        self.assertEqual(created["source_kind"], "manual")
+        self.assertEqual(len(listing["documents"]), 1)
+        self.assertEqual(updated["title"], "Architecture Notes")
+        self.assertEqual(updated["content"], "Updated architecture notes")
+        self.assertEqual(created_role["scope"], "role")
+        self.assertEqual(len(role_listing["documents"]), 1)
+        self.assertEqual(role_listing["documents"][0]["title"], "Alibaba JD")
+        self.assertEqual(deleted["status"], "deleted")
+        self.assertEqual(listing_after_delete["documents"], [])
+
+    def test_library_repo_reindex_refreshes_imported_assets_and_keeps_manual_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo_root = root / "agent-console"
+            repo_root.mkdir()
+            (repo_root / "README.md").write_text("Version 1 doc", encoding="utf-8")
+            src_dir = repo_root / "src"
+            src_dir.mkdir()
+            (src_dir / "workflow.py").write_text("def run():\n    return 'v1'\n", encoding="utf-8")
+
+            client = TestClient(create_app(workspace_storage_root=root / "library"))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={"name": "Agent Console"},
+            ).json()
+            imported = client.post(
+                f"/api/library/projects/{project['project_id']}/repos/import-path",
+                json={"path": str(repo_root)},
+            ).json()
+            repo_id = imported["knowledge"]["projects"][0]["repo_summaries"][0]["repo_id"]
+            client.post(
+                f"/api/library/projects/{project['project_id']}/documents",
+                json={
+                    "title": "Interview Notes",
+                    "path": "notes/interview.md",
+                    "content": "Manual project notes",
+                },
+            ).json()
+
+            (repo_root / "README.md").write_text("Version 2 doc", encoding="utf-8")
+            (src_dir / "workflow.py").write_text("def run():\n    return 'v2'\n", encoding="utf-8")
+
+            reindexed = client.post(f"/api/library/repos/{repo_id}/reindex").json()
+            refreshed_project = client.get(f"/api/library/projects/{project['project_id']}").json()
+
+        imported_docs = [item for item in refreshed_project["documents"] if item["source_kind"] == "repo_import"]
+        manual_docs = [item for item in refreshed_project["documents"] if item["source_kind"] == "manual"]
+
+        self.assertEqual(reindexed["import_summary"]["project_name"], "Agent Console")
+        self.assertEqual(reindexed["import_summary"]["imported_docs"], 1)
+        self.assertEqual(reindexed["import_summary"]["imported_code_files"], 1)
+        self.assertTrue(any(item["content"] == "Version 2 doc" for item in imported_docs))
+        self.assertTrue(any(item["title"] == "Interview Notes" for item in manual_docs))
+        self.assertTrue(any(item["content"] == "Manual project notes" for item in manual_docs))
+        self.assertTrue(any(item["content"] == "def run():\n    return 'v2'\n" for item in refreshed_project["code_files"]))
+
 
 if __name__ == "__main__":
     unittest.main()

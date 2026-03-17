@@ -10,6 +10,7 @@ import {
   getLibraryWorkspace,
   importLibraryProjectPath,
   listLibraryWorkspaces,
+  reindexLibraryRepo,
   updateLibraryOverlay,
   updateLibraryPreset,
   updateLibraryProject,
@@ -51,8 +52,15 @@ function defaultProfile(): LibraryProfileRecord {
 
 function defaultRoleDocument(): LibraryRoleDocumentRecord {
   return {
+    documentId: "role-draft",
+    scope: "role",
     title: "Role Notes",
+    path: "role/notes.md",
     content: "",
+    sourceKind: "manual",
+    sourcePath: "",
+    repoId: "",
+    updatedAt: Date.now() / 1000,
   };
 }
 
@@ -114,8 +122,14 @@ function serializeWorkspacePayload(workspace: LibraryWorkspaceRecord): Record<st
       },
       projects: workspace.knowledge.projects.map((project) => serializeProjectPayload(project)),
       role_documents: workspace.knowledge.roleDocuments.map((document) => ({
+        document_id: document.documentId,
         title: document.title,
+        path: document.path,
         content: document.content,
+        source_kind: document.sourceKind,
+        source_path: document.sourcePath,
+        repo_id: document.repoId,
+        updated_at: document.updatedAt,
       })),
     },
   };
@@ -145,12 +159,21 @@ function serializeProjectPayload(project: LibraryProjectRecord): Record<string, 
       imported_code_files: repo.importedCodeFiles,
     })),
     documents: project.documents.map((document) => ({
+      document_id: document.documentId,
+      title: document.title,
       path: document.path,
       content: document.content,
+      source_kind: document.sourceKind,
+      source_path: document.sourcePath,
+      repo_id: document.repoId,
+      updated_at: document.updatedAt,
     })),
     code_files: project.codeFiles.map((file) => ({
       path: file.path,
       content: file.content,
+      source_kind: file.sourceKind,
+      source_path: file.sourcePath,
+      repo_id: file.repoId,
     })),
   };
 }
@@ -320,9 +343,9 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
       if (!current) {
         return current;
       }
-      const nextRoleDocuments = current.knowledge.roleDocuments.length > 0
-        ? [document, ...current.knowledge.roleDocuments.slice(1)]
-        : [document];
+      const nextRoleDocuments = current.knowledge.roleDocuments.some((item) => item.documentId === document.documentId)
+        ? current.knowledge.roleDocuments.map((item) => (item.documentId === document.documentId ? document : item))
+        : [...current.knowledge.roleDocuments, document];
       return {
         ...current,
         knowledge: {
@@ -331,6 +354,34 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
         },
       };
     });
+  }
+
+  function addRoleDocument() {
+    updateRoleDocument({
+      documentId: `role-draft-${Date.now()}`,
+      scope: "role",
+      title: "New Role Note",
+      path: `role/${Date.now()}.md`,
+      content: "",
+      sourceKind: "manual",
+      sourcePath: "",
+      repoId: "",
+      updatedAt: Date.now() / 1000,
+    });
+  }
+
+  function deleteRoleDocument(documentId: string) {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            knowledge: {
+              ...current.knowledge,
+              roleDocuments: current.knowledge.roleDocuments.filter((item) => item.documentId !== documentId),
+            },
+          }
+        : current,
+    );
   }
 
   function updateProject(project: LibraryProjectRecord) {
@@ -525,6 +576,24 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     }
   }
 
+  async function handleReindexRepo(repoId: string) {
+    if (!backendOnline) {
+      setStatusMessage("后端离线时不能重新扫描 repo。");
+      return;
+    }
+    try {
+      const reindexed = await reindexLibraryRepo(backendBaseUrl, repoId);
+      syncWorkspace(reindexed.workspace);
+      setStatusMessage(
+        reindexed.importSummary
+          ? `已重新扫描 repo，刷新了 ${reindexed.importSummary.importedDocs} 份文档和 ${reindexed.importSummary.importedCodeFiles} 段代码。`
+          : "已重新扫描当前 repo。",
+      );
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "重新扫描 repo 失败。");
+    }
+  }
+
   async function handleCreateOverlay() {
     if (!backendOnline || !workspace) {
       setStatusMessage("请先连接后端并创建资料库。");
@@ -681,7 +750,6 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     }
   }
 
-  const roleDocument = workspace?.knowledge.roleDocuments[0] ?? defaultRoleDocument();
   const profile = workspace?.knowledge.profile ?? defaultProfile();
 
   return (
@@ -753,22 +821,55 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
                 />
               </label>
 
-              <label>
-                Role Document 标题
-                <input
-                  value={roleDocument.title}
-                  onChange={(event) => updateRoleDocument({ ...roleDocument, title: event.target.value })}
-                />
-              </label>
-
-              <label>
-                Role Document 内容
-                <textarea
-                  rows={6}
-                  value={roleDocument.content}
-                  onChange={(event) => updateRoleDocument({ ...roleDocument, content: event.target.value })}
-                />
-              </label>
+              <div className="meta-card">
+                <div className="panel-head compact">
+                  <span>Role Documents</span>
+                  <strong>{workspace.knowledge.roleDocuments.length}</strong>
+                </div>
+                <div className="action-row">
+                  <button className="ghost small" onClick={addRoleDocument}>
+                    新增 Role 文档
+                  </button>
+                </div>
+                {workspace.knowledge.roleDocuments.length === 0 ? (
+                  <p className="library-empty">还没有 role 文档，可以按公司或岗位拆多份维护。</p>
+                ) : null}
+                {workspace.knowledge.roleDocuments.map((document) => (
+                  <div key={document.documentId} className="meta-card">
+                    <div className="panel-head compact">
+                      <span>{document.sourceKind}</span>
+                      <strong>{document.title}</strong>
+                    </div>
+                    <label>
+                      标题
+                      <input
+                        value={document.title}
+                        onChange={(event) => updateRoleDocument({ ...document, title: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      路径
+                      <input
+                        value={document.path}
+                        onChange={(event) => updateRoleDocument({ ...document, path: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      内容
+                      <textarea
+                        rows={6}
+                        value={document.content}
+                        onChange={(event) => updateRoleDocument({ ...document, content: event.target.value })}
+                      />
+                    </label>
+                    <div className="action-row">
+                      <button className="ghost small" onClick={() => deleteRoleDocument(document.documentId)}>
+                        删除 Role 文档
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
               <div className="action-row">
                 <button className="ghost accent small" onClick={handleSaveWorkspace}>
@@ -856,6 +957,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           onRefreshWorkspace={handleRefreshWorkspace}
           onCompileWorkspace={handleCompileWorkspace}
           onImportRepo={handleImportRepo}
+          onReindexRepo={handleReindexRepo}
         />
       </div>
     </section>

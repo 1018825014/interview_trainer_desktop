@@ -166,15 +166,25 @@ export const sampleLibraryWorkspace: LibraryWorkspaceRecord = {
         ],
         documents: [
           {
+            documentId: "doc-agentops-readme",
+            scope: "project",
+            title: "README.md",
             path: "README.md",
             content:
               "This project serves internal users and lets them configure agent workflows with lower engineering overhead.",
+            sourceKind: "repo_import",
+            sourcePath: "E:/projects/agentops-console",
+            repoId: "repo-agentops",
+            updatedAt: Date.now() / 1000,
           },
         ],
         codeFiles: [
           {
             path: "src/orchestrator/workflow.py",
             content: "class WorkflowOrchestrator:\n    def run(self, state):\n        return state\n",
+            sourceKind: "repo_import",
+            sourcePath: "E:/projects/agentops-console",
+            repoId: "repo-agentops",
           },
         ],
       },
@@ -198,8 +208,15 @@ export const sampleLibraryWorkspace: LibraryWorkspaceRecord = {
     ],
     roleDocuments: [
       {
+        documentId: "role-doc-alibaba",
+        scope: "role",
         title: "Alibaba Agent Platform",
+        path: "role/alibaba.md",
         content: "Focus on agent systems, retrieval quality, evaluation, latency optimization, and observability.",
+        sourceKind: "manual",
+        sourcePath: "",
+        repoId: "",
+        updatedAt: Date.now() / 1000,
       },
     ],
   },

@@ -297,11 +297,40 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `44/44` passing
+- Stage 8 implemented:
+  - unified project documents and role documents into document assets with stable metadata:
+    - `document_id`
+    - `scope`
+    - `source_kind`
+    - `source_path`
+    - `repo_id`
+    - `updated_at`
+  - added backend asset APIs for:
+    - project document list/create
+    - role document list/create
+    - document update/delete
+    - repo reindex by `repo_id`
+  - repo reindex now refreshes only repo-managed imported docs/code and preserves manual assets in the same project
+  - frontend library panel now supports:
+    - editing multiple role documents in the workspace editor
+    - editing multiple project documents with per-asset metadata visible
+    - showing code snapshot provenance in project assets
+    - reindexing any imported repo from the status rail
+  - sample/mock library data and frontend type mappings now use the normalized asset shape
+- Stage 8 verification:
+  - targeted backend asset tests:
+    - `test_library_api.py`
+    - `test_workspace.py`
+    - `test_library_compile.py`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `46/46` passing
 - Recommended next implementation order:
-  1. document CRUD + repo reindex controls in desktop library UI
-  2. richer indexing and evidence authoring surfaces
-  3. bundle history / compare / reuse UX polish
-  4. deeper retrieval ranking and hook control tuning
+  1. richer indexing and evidence authoring surfaces
+  2. bundle history / compare / reuse UX polish
+  3. deeper retrieval ranking and hook control tuning
+  4. direct document-asset persistence actions in the desktop editor
 
 ## Best next debugging tasks
 

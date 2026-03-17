@@ -16,6 +16,7 @@ interface StatusRailProps {
   onRefreshWorkspace: () => void;
   onCompileWorkspace: () => void;
   onImportRepo: () => void;
+  onReindexRepo: (repoId: string) => void;
 }
 
 function formatTime(value: number | null | undefined): string {
@@ -36,6 +37,7 @@ export function StatusRail({
   onRefreshWorkspace,
   onCompileWorkspace,
   onImportRepo,
+  onReindexRepo,
 }: StatusRailProps) {
   const latestBundle =
     selectedBundle ??
@@ -92,7 +94,18 @@ export function StatusRail({
             <ul className="note-list">
               {project.repoSummaries.map((repo) => (
                 <li key={repo.repoId}>
-                  {repo.label}: {repo.importedDocs} docs + {repo.importedCodeFiles} code
+                  <div>
+                    {repo.label}: {repo.importedDocs} docs + {repo.importedCodeFiles} code
+                  </div>
+                  <div className="session-chip">
+                    <span>{repo.status}</span>
+                    <span>{formatTime(repo.lastScannedAt)}</span>
+                  </div>
+                  <div className="action-row">
+                    <button className="ghost small" onClick={() => onReindexRepo(repo.repoId)}>
+                      Reindex Repo
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

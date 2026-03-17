@@ -16,18 +16,35 @@ export interface LibraryProfileRecord {
 }
 
 export interface LibraryRoleDocumentRecord {
+  documentId: string;
+  scope: "role";
   title: string;
+  path: string;
   content: string;
+  sourceKind: string;
+  sourcePath: string;
+  repoId: string;
+  updatedAt: number;
 }
 
 export interface LibraryDocumentRecord {
+  documentId: string;
+  scope: "project";
+  title: string;
   path: string;
   content: string;
+  sourceKind: string;
+  sourcePath: string;
+  repoId: string;
+  updatedAt: number;
 }
 
 export interface LibraryCodeFileRecord {
   path: string;
   content: string;
+  sourceKind: string;
+  sourcePath: string;
+  repoId: string;
 }
 
 export interface LibraryRepoSummaryRecord {
