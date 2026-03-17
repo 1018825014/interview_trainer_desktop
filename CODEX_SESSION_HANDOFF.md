@@ -138,6 +138,8 @@ Recommended current setup:
   - live bridge feature work
 - Design spec written to:
   - `docs/superpowers/specs/2026-03-17-persistent-knowledge-library-design.md`
+- Implementation plan written to:
+  - `docs/superpowers/plans/2026-03-17-persistent-knowledge-library.md`
 - Recommended next implementation order:
   1. persistent library storage and schema
   2. multi-project / multi-repo / multi-document CRUD
