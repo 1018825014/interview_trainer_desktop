@@ -21,6 +21,7 @@ import {
   getLibraryProjectAuthoringPack,
   getLibraryProjectCompiledPreview,
   getLibraryPresetLatestBundleStatus,
+  getLibraryWorkspacePresetStatuses,
   getLibraryWorkspaceCompiledPreview,
   getLibraryWorkspace,
   importLibraryProjectPath,
@@ -307,6 +308,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
   });
   const [presetComparison, setPresetComparison] = useState<LibraryPresetComparisonRecord | null>(null);
   const [presetLatestBundleStatus, setPresetLatestBundleStatus] = useState<LibraryPresetLatestBundleStatusRecord | null>(null);
+  const [workspacePresetStatuses, setWorkspacePresetStatuses] = useState<LibraryPresetLatestBundleStatusRecord[]>([]);
   const [comparePresetId, setComparePresetId] = useState("");
   const [bundleDetail, setBundleDetail] = useState<LibraryBundleDetailRecord | null>(null);
   const [bundleComparison, setBundleComparison] = useState<LibraryBundleComparisonRecord | null>(null);
@@ -327,6 +329,16 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     return refreshed;
   }
 
+  async function refreshPresetStatuses(workspaceId: string) {
+    if (!backendOnline) {
+      setWorkspacePresetStatuses([]);
+      return [];
+    }
+    const statuses = await getLibraryWorkspacePresetStatuses(backendBaseUrl, workspaceId);
+    setWorkspacePresetStatuses(statuses);
+    return statuses;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -336,6 +348,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           setWorkspaceList([sampleLibraryWorkspace]);
           setWorkspace(sampleLibraryWorkspace);
           setSelection(defaultSelection(sampleLibraryWorkspace));
+          setWorkspacePresetStatuses([]);
           setStatusMessage("后端离线，先展示示例资料库。");
         }
         return;
@@ -362,6 +375,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
           return;
         }
         setWorkspace(refreshed);
+        void refreshPresetStatuses(refreshed.workspaceId);
         setSelection((current) => ensureSelection(current, refreshed));
         setStatusMessage(`已加载 ${items.length} 个资料库。`);
       } catch (error) {
@@ -371,6 +385,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
             setWorkspaceList([sampleLibraryWorkspace]);
             setWorkspace(sampleLibraryWorkspace);
             setSelection(defaultSelection(sampleLibraryWorkspace));
+            setWorkspacePresetStatuses([]);
           }
         }
       }
@@ -414,6 +429,14 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
     () => latestBundleForPreset(selectedPreset, workspace?.compiledBundles ?? []),
     [selectedPreset, workspace],
   );
+
+  useEffect(() => {
+    if (!backendOnline || !workspace) {
+      setWorkspacePresetStatuses([]);
+      return;
+    }
+    void refreshPresetStatuses(workspace.workspaceId);
+  }, [backendOnline, workspace?.workspaceId, workspace?.updatedAt, workspace?.compiledBundles.length]);
 
   useEffect(() => {
     setPresetComparison(null);
@@ -1520,6 +1543,7 @@ export function LibraryPanel({ backendBaseUrl, backendOnline, onActivateSession 
         <WorkspaceNav
           workspaces={workspaceList}
           workspace={workspace}
+          presetStatuses={workspacePresetStatuses}
           selection={selection}
           onSelectWorkspace={handleSelectWorkspace}
           onSelect={setSelection}

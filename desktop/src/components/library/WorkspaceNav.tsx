@@ -1,8 +1,13 @@
-import type { LibraryEntitySelection, LibraryWorkspaceRecord } from "../../types/library";
+import type {
+  LibraryEntitySelection,
+  LibraryPresetLatestBundleStatusRecord,
+  LibraryWorkspaceRecord,
+} from "../../types/library";
 
 interface WorkspaceNavProps {
   workspaces: LibraryWorkspaceRecord[];
   workspace: LibraryWorkspaceRecord | null;
+  presetStatuses: LibraryPresetLatestBundleStatusRecord[];
   selection: LibraryEntitySelection | null;
   onSelectWorkspace: (workspaceId: string) => void;
   onSelect: (selection: LibraryEntitySelection) => void;
@@ -19,6 +24,7 @@ function isActive(selection: LibraryEntitySelection | null, type: LibraryEntityS
 export function WorkspaceNav({
   workspaces,
   workspace,
+  presetStatuses,
   selection,
   onSelectWorkspace,
   onSelect,
@@ -27,19 +33,21 @@ export function WorkspaceNav({
   onCreateOverlay,
   onCreatePreset,
 }: WorkspaceNavProps) {
+  const presetStatusById = new Map(presetStatuses.map((item) => [item.preset.presetId, item]));
+
   return (
     <aside className="library-nav">
       <div className="panel-head">
-        <span>资料库</span>
+        <span>Library</span>
         <strong>{workspaces.length}</strong>
       </div>
 
       <div className="action-row library-nav-actions">
         <button className="ghost accent small" onClick={onCreateWorkspace}>
-          新建资料库
+          New Workspace
         </button>
         <button className="ghost small" onClick={onCreateProject} disabled={!workspace}>
-          项目 +
+          Project +
         </button>
         <button className="ghost small" onClick={onCreateOverlay} disabled={!workspace}>
           Overlay +
@@ -55,7 +63,7 @@ export function WorkspaceNav({
         </div>
         <div className="library-list">
           {workspaces.length === 0 ? (
-            <p className="library-empty">还没有持久化资料库，先创建一个开始。</p>
+            <p className="library-empty">No persisted workspace yet. Create one to get started.</p>
           ) : (
             workspaces.map((item) => (
               <button
@@ -64,7 +72,7 @@ export function WorkspaceNav({
                 onClick={() => onSelectWorkspace(item.workspaceId)}
               >
                 <strong>{item.name}</strong>
-                <small>{item.knowledge.projects.length} 个项目</small>
+                <small>{item.knowledge.projects.length} projects</small>
               </button>
             ))
           )}
@@ -84,7 +92,7 @@ export function WorkspaceNav({
                 onClick={() => onSelect({ type: "workspace", id: workspace.workspaceId })}
               >
                 <strong>{workspace.name}</strong>
-                <small>背景与长期资料</small>
+                <small>Profile and long-term materials</small>
               </button>
               {workspace.knowledge.projects.map((project) => (
                 <button
@@ -93,7 +101,7 @@ export function WorkspaceNav({
                   onClick={() => onSelect({ type: "project", id: project.projectId })}
                 >
                   <strong>{project.name}</strong>
-                  <small>{project.repoSummaries.length} repo / {project.documents.length} 文档</small>
+                  <small>{project.repoSummaries.length} repo / {project.documents.length} docs</small>
                 </button>
               ))}
             </div>
@@ -112,7 +120,7 @@ export function WorkspaceNav({
                   onClick={() => onSelect({ type: "overlay", id: overlay.overlayId })}
                 >
                   <strong>{overlay.name}</strong>
-                  <small>{overlay.company || "未设置公司"} / {overlay.depthPolicy}</small>
+                  <small>{overlay.company || "No company"} / {overlay.depthPolicy}</small>
                 </button>
               ))}
             </div>
@@ -124,16 +132,28 @@ export function WorkspaceNav({
               <small>{workspace.presets.length}</small>
             </div>
             <div className="library-list">
-              {workspace.presets.map((preset) => (
-                <button
-                  key={preset.presetId}
-                  className={`library-list-item ${isActive(selection, "preset", preset.presetId) ? "active" : ""}`}
-                  onClick={() => onSelect({ type: "preset", id: preset.presetId })}
-                >
-                  <strong>{preset.name}</strong>
-                  <small>{preset.projectIds.length} 个项目 / {preset.overlayId ? "带 overlay" : "无 overlay"}</small>
-                </button>
-              ))}
+              {workspace.presets.map((preset) => {
+                const status = presetStatusById.get(preset.presetId);
+                const statusLabel = status ? status.status.toUpperCase() : "UNKNOWN";
+                const statusDetail =
+                  status?.status === "stale"
+                    ? `${status.reasons.length} stale reason${status.reasons.length === 1 ? "" : "s"}`
+                    : status?.status === "missing"
+                      ? "No bundle yet"
+                      : "Bundle ready";
+                return (
+                  <button
+                    key={preset.presetId}
+                    className={`library-list-item ${isActive(selection, "preset", preset.presetId) ? "active" : ""}`}
+                    onClick={() => onSelect({ type: "preset", id: preset.presetId })}
+                  >
+                    <strong>{preset.name}</strong>
+                    <small>
+                      {statusLabel} / {preset.projectIds.length} projects / {statusDetail}
+                    </small>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -153,7 +173,7 @@ export function WorkspaceNav({
                     onClick={() => onSelect({ type: "bundle", id: bundle.bundleId })}
                   >
                     <strong>{bundle.presetName || "Bundle"}</strong>
-                    <small>{bundle.projectCount} 项目 / {bundle.retrievalUnitCount} RU</small>
+                    <small>{bundle.projectCount} projects / {bundle.retrievalUnitCount} RU</small>
                   </button>
                 ))}
             </div>

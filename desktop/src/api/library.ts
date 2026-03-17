@@ -659,6 +659,16 @@ export async function updateLibraryProjectAuthoringPack(
   return mapProjectAuthoringPack(response);
 }
 
+export async function getLibraryWorkspacePresetStatuses(
+  baseUrl: string,
+  workspaceId: string,
+): Promise<LibraryPresetLatestBundleStatusRecord[]> {
+  const payload = await requestJson<any>(`${baseUrl}/api/library/workspaces/${workspaceId}/preset-statuses`, {
+    errorMessage: "Failed to load workspace preset statuses",
+  });
+  return Array.isArray(payload?.preset_statuses) ? payload.preset_statuses.map(mapPresetLatestBundleStatus) : [];
+}
+
 export async function createLibraryAuthoringTemplate(
   baseUrl: string,
   workspaceId: string,

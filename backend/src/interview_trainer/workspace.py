@@ -594,6 +594,16 @@ class WorkspaceManager:
         _, preset = self._find_preset(preset_id)
         return self._serialize_preset(preset)
 
+    def list_workspace_preset_statuses(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        return {
+            "preset_statuses": [
+                self.get_preset_latest_bundle_status(_clean_text(preset.get("preset_id")))
+                for preset in workspace.get("presets", [])
+                if _clean_text(preset.get("preset_id"))
+            ]
+        }
+
     def update_preset(self, preset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         workspace, preset = self._find_preset(preset_id)
         if "name" in payload:

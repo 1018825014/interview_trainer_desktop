@@ -350,6 +350,13 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="workspace not found") from exc
 
+    @app.get("/api/library/workspaces/{workspace_id}/preset-statuses")
+    def list_library_workspace_preset_statuses(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_workspace_preset_statuses(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
     @app.post("/api/library/workspaces/{workspace_id}/authoring-templates")
     def create_library_authoring_template(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:

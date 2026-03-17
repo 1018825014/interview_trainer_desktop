@@ -496,6 +496,69 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(stale["stale_project_names"], ["Agent Console"])
         self.assertEqual(stale["latest_bundle"]["overlay_name"], "Alibaba")
 
+    def test_library_workspace_preset_statuses_summarize_current_stale_and_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Pitch",
+                    "business_value": "Build agent workflows",
+                    "architecture": "React + Python",
+                },
+            ).json()
+            overlay = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={"name": "Alibaba", "company": "Alibaba"},
+            ).json()
+            stale_preset = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Preset Stale",
+                    "project_ids": [project["project_id"]],
+                    "overlay_id": overlay["overlay_id"],
+                    "include_role_documents": True,
+                },
+            ).json()
+            missing_preset = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Preset Missing",
+                    "project_ids": [project["project_id"]],
+                    "overlay_id": overlay["overlay_id"],
+                    "include_role_documents": True,
+                },
+            ).json()
+
+            client.post(f"/api/library/presets/{stale_preset['preset_id']}/build-session-payload").json()
+            client.put(
+                f"/api/library/projects/{project['project_id']}",
+                json={"architecture": "React + Python + SQLite"},
+            ).json()
+            current_preset = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Preset Current",
+                    "project_ids": [project["project_id"]],
+                    "overlay_id": overlay["overlay_id"],
+                    "include_role_documents": True,
+                },
+            ).json()
+            client.post(f"/api/library/presets/{current_preset['preset_id']}/build-session-payload").json()
+
+            statuses = client.get(
+                f"/api/library/workspaces/{workspace['workspace_id']}/preset-statuses"
+            ).json()
+
+        status_by_name = {item["preset"]["name"]: item for item in statuses["preset_statuses"]}
+        self.assertEqual(status_by_name["Preset Stale"]["status"], "stale")
+        self.assertIn("project_content_updated", status_by_name["Preset Stale"]["reasons"])
+        self.assertEqual(status_by_name["Preset Missing"]["status"], "missing")
+        self.assertEqual(status_by_name["Preset Missing"]["latest_bundle"], None)
+        self.assertEqual(status_by_name["Preset Current"]["status"], "current")
+
     def test_library_authoring_templates_can_be_saved_and_applied_across_projects(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))

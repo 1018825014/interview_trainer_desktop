@@ -647,6 +647,37 @@ Recommended current setup:
     - `npm run build`
   - full backend unittest:
     - `76/76` passing
+- Stage 21 implemented:
+  - added workspace-level preset status aggregation so the UI no longer needs to inspect presets one by one to know whether a bundle is usable
+  - new backend API:
+    - `GET /api/library/workspaces/{workspace_id}/preset-statuses`
+  - the new workspace endpoint returns the same rich per-preset status payload as the single-preset endpoint, but in one batch:
+    - `missing`
+    - `current`
+    - `stale`
+    - latest bundle summary
+    - stale reasons
+    - stale project names
+  - backend regression coverage now verifies one workspace can simultaneously report:
+    - a stale preset
+    - a missing preset
+    - a current preset
+  - desktop now fetches workspace-level preset statuses automatically when:
+    - a workspace is loaded
+    - workspace timestamps change
+    - bundle history changes
+  - workspace navigation now shows each preset with a quick status badge-style summary:
+    - status
+    - project count
+    - whether the bundle is ready, missing, or stale
+  - this makes the left nav much more actionable before a live interview because you can spot risky presets immediately instead of opening them one by one
+- Stage 21 verification:
+  - targeted backend tests:
+    - `tests.test_library_api -v`
+  - desktop build:
+    - `npm run build`
+  - full backend unittest:
+    - `77/77` passing
 - Recommended next implementation order:
   1. larger-library workspace preview UX polish
   2. preset workflow refinement:
