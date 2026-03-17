@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 try:
@@ -16,7 +17,7 @@ from .transcription import AudioTranscriptionService
 from .workspace import WorkspaceManager
 
 
-def create_app() -> Any:
+def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
     if FastAPI is None:  # pragma: no cover
         raise RuntimeError("FastAPI is not installed. Install backend/requirements.txt first.")
 
@@ -35,7 +36,10 @@ def create_app() -> Any:
     service = InterviewTrainerService()
     audio_sessions = AudioSessionManager()
     transcription_service = AudioTranscriptionService(audio_sessions, interview_service=service)
-    workspace_manager = WorkspaceManager(service.knowledge_compiler)
+    workspace_manager = WorkspaceManager(
+        service.knowledge_compiler,
+        storage_root=workspace_storage_root,
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -169,6 +173,79 @@ def create_app() -> Any:
             return workspace_manager.update_workspace(workspace_id, payload)
         except KeyError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/workspaces")
+    def list_library_workspaces() -> dict[str, Any]:
+        return workspace_manager.list_workspaces()
+
+    @app.post("/api/library/workspaces")
+    def create_library_workspace(payload: dict[str, Any]) -> dict[str, Any]:
+        return workspace_manager.create_workspace(payload)
+
+    @app.get("/api/library/workspaces/{workspace_id}")
+    def get_library_workspace(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_workspace(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.put("/api/library/workspaces/{workspace_id}")
+    def update_library_workspace(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.update_workspace(workspace_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/workspaces/{workspace_id}/projects")
+    def list_library_projects(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_projects(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.post("/api/library/workspaces/{workspace_id}/projects")
+    def create_library_project(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.create_project(workspace_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/projects/{project_id}")
+    def get_library_project(project_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_project(project_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.put("/api/library/projects/{project_id}")
+    def update_library_project(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.update_project(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.delete("/api/library/projects/{project_id}")
+    def delete_library_project(project_id: str) -> dict[str, str]:
+        try:
+            return workspace_manager.delete_project(project_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.get("/api/library/projects/{project_id}/repos")
+    def list_library_project_repos(project_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_project_repos(project_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+
+    @app.post("/api/library/projects/{project_id}/repos/import-path")
+    def import_library_project_repo(project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.import_project_repo(project_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="project not found") from exc
+        except FileNotFoundError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/workspaces/{workspace_id}/compile")
     def compile_workspace(workspace_id: str) -> dict[str, Any]:

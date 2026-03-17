@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `33/33` passing
+- Backend tests: `37/37` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -124,6 +124,7 @@ Recommended current setup:
 - Current stage completed:
   - design alignment
   - Stage 1 persistent workspace foundation
+  - Stage 2 backend library CRUD API
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -160,11 +161,33 @@ Recommended current setup:
     - `test_library_store.py`
     - `test_library_repository.py`
     - `test_workspace.py`
+- Stage 2 implemented:
+  - `WorkspaceManager` now exposes project-level CRUD methods:
+    - list/create/get/update/delete project
+    - list project repos
+    - import repo into a selected project
+  - imported existing workspaces are auto-upgraded to include:
+    - `project_id`
+    - `repo_summaries`
+  - FastAPI now exposes `/api/library/...` endpoints for:
+    - workspace list/create/get/update
+    - project list/create/get/update/delete
+    - project repo list
+    - project repo `import-path`
+  - `create_app()` now supports `workspace_storage_root` for isolated test storage
+- Stage 2 verification:
+  - targeted API tests:
+    - `test_library_api.py`
+  - regression tests:
+    - `test_library_store.py`
+    - `test_library_repository.py`
+    - `test_workspace.py`
+  - full backend unittest: `37/37` passing
 - Recommended next implementation order:
-  1. expand Stage 1 storage into true library CRUD endpoints and schema surfaces
-  2. compile and retrieval-unit generation
-  3. preset / overlay session payload activation
-  4. desktop library UI split and management flow
+  1. compile and retrieval-unit generation
+  2. preset / overlay session payload activation
+  3. desktop library UI split and management flow
+  4. richer indexing and evidence authoring surfaces
 
 ## Best next debugging tasks
 
