@@ -93,7 +93,7 @@ Recommended current setup:
 
 ## Last real validation results
 
-- Backend tests: `38/38` passing
+- Backend tests: `39/39` passing
 - Desktop build: `npm run build` passing
 - Real compatible generation smoke:
   - provider style: OpenAI-compatible chat completions
@@ -126,6 +126,7 @@ Recommended current setup:
   - Stage 1 persistent workspace foundation
   - Stage 2 backend library CRUD API
   - Stage 3 answer-oriented library compile layer
+  - Stage 4 overlays, presets, bundles, and session-payload activation
 - Design direction chosen:
   - local hybrid storage: `SQLite + library_objects/`
   - long-term library separated from interview-specific overlays
@@ -205,11 +206,34 @@ Recommended current setup:
     - `test_library_compile.py`
     - `test_knowledge.py`
   - full backend unittest: `38/38` passing
+- Stage 4 implemented:
+  - added `LibrarySessionBuilder` to bridge:
+    - selected library projects
+    - overlay metadata
+    - compiled bundle stats
+    - session-ready `knowledge + briefing + activation_summary`
+  - `WorkspaceManager` now persists and manages:
+    - richer project answer fields such as `pitch_30`, `tradeoffs`, `key_metrics`
+    - overlays
+    - presets
+    - compiled bundle summaries
+  - FastAPI now exposes library endpoints for:
+    - overlay list/create/get/update
+    - preset list/create/get/update
+    - bundle list/get
+    - preset `build-session-payload`
+- New backend files added in Stage 4:
+  - `backend/src/interview_trainer/library_session.py`
+- Stage 4 verification:
+  - targeted API tests:
+    - `test_library_api.py`
+    - `test_service.py`
+  - full backend unittest: `39/39` passing
 - Recommended next implementation order:
-  1. preset / overlay session payload activation
+  1. runtime answer-plan integration
   2. desktop library UI split and management flow
   3. richer indexing and evidence authoring surfaces
-  4. runtime answer-plan integration
+  4. bundle history and activation UX polish
 
 ## Best next debugging tasks
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from .knowledge import KnowledgeCompiler
 from .library_repository import LibraryRepository
+from .library_session import LibrarySessionBuilder
 
 
 CODE_EXTENSIONS = {
@@ -53,6 +54,7 @@ class WorkspaceManager:
     ) -> None:
         self.compiler = compiler or KnowledgeCompiler()
         self.repository = LibraryRepository(storage_root=storage_root)
+        self.session_builder = LibrarySessionBuilder()
         self._workspaces: dict[str, dict[str, Any]] = self.repository.load_workspaces()
         self._upgrade_loaded_workspaces()
 
@@ -71,6 +73,9 @@ class WorkspaceManager:
             "workspace_id": workspace_id,
             "name": _clean_text(payload.get("name")) or "Interview Workspace",
             "knowledge": self._normalize_knowledge_payload(payload.get("knowledge", {})),
+            "overlays": [],
+            "presets": [],
+            "compiled_bundles": [],
             "created_at": now,
             "updated_at": now,
             "compiled_knowledge": None,
@@ -111,10 +116,26 @@ class WorkspaceManager:
         workspace, project = self._find_project(project_id)
         if "name" in payload:
             project["name"] = _clean_text(payload.get("name")) or project["name"]
+        if "pitch_30" in payload:
+            project["pitch_30"] = _clean_text(payload.get("pitch_30"))
+        if "pitch_90" in payload:
+            project["pitch_90"] = _clean_text(payload.get("pitch_90"))
         if "business_value" in payload:
             project["business_value"] = _clean_text(payload.get("business_value")) or project["business_value"]
         if "architecture" in payload:
             project["architecture"] = _clean_text(payload.get("architecture")) or project["architecture"]
+        if "key_metrics" in payload:
+            project["key_metrics"] = self._normalize_lines(payload.get("key_metrics"))
+        if "tradeoffs" in payload:
+            project["tradeoffs"] = self._normalize_lines(payload.get("tradeoffs"))
+        if "failure_cases" in payload:
+            project["failure_cases"] = self._normalize_lines(payload.get("failure_cases"))
+        if "limitations" in payload:
+            project["limitations"] = self._normalize_lines(payload.get("limitations"))
+        if "upgrade_plan" in payload:
+            project["upgrade_plan"] = self._normalize_lines(payload.get("upgrade_plan"))
+        if "interviewer_hooks" in payload:
+            project["interviewer_hooks"] = self._normalize_lines(payload.get("interviewer_hooks"))
         if "documents" in payload:
             project["documents"] = [
                 {
@@ -156,6 +177,112 @@ class WorkspaceManager:
     def import_project_repo(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         workspace, project = self._find_project(project_id)
         return self._import_into_project(workspace, project, payload)
+
+    def list_overlays(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        return {
+            "overlays": [
+                self._serialize_overlay(overlay)
+                for overlay in workspace.get("overlays", [])
+            ]
+        }
+
+    def create_overlay(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        overlay = self._normalize_overlay(payload)
+        workspace.setdefault("overlays", []).append(overlay)
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return self._serialize_overlay(overlay)
+
+    def get_overlay(self, overlay_id: str) -> dict[str, Any]:
+        _, overlay = self._find_overlay(overlay_id)
+        return self._serialize_overlay(overlay)
+
+    def update_overlay(self, overlay_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, overlay = self._find_overlay(overlay_id)
+        if "name" in payload:
+            overlay["name"] = _clean_text(payload.get("name")) or overlay["name"]
+        if "company" in payload:
+            overlay["company"] = _clean_text(payload.get("company"))
+        if "job_description" in payload:
+            overlay["job_description"] = _clean_text(payload.get("job_description"))
+        if "business_context" in payload:
+            overlay["business_context"] = _clean_text(payload.get("business_context"))
+        if "focus_project_ids" in payload:
+            overlay["focus_project_ids"] = self._normalize_lines(payload.get("focus_project_ids"))
+        if "emphasis_points" in payload:
+            overlay["emphasis_points"] = self._normalize_lines(payload.get("emphasis_points"))
+        if "style_profile" in payload:
+            overlay["style_profile"] = self._normalize_lines(payload.get("style_profile"))
+        if "depth_policy" in payload:
+            overlay["depth_policy"] = _clean_text(payload.get("depth_policy")) or overlay["depth_policy"]
+        overlay["updated_at"] = time.time()
+        workspace["updated_at"] = overlay["updated_at"]
+        self.repository.save_workspace(workspace)
+        return self._serialize_overlay(overlay)
+
+    def list_presets(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        return {
+            "presets": [
+                self._serialize_preset(preset)
+                for preset in workspace.get("presets", [])
+            ]
+        }
+
+    def create_preset(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        preset = self._normalize_preset(payload)
+        workspace.setdefault("presets", []).append(preset)
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return self._serialize_preset(preset)
+
+    def get_preset(self, preset_id: str) -> dict[str, Any]:
+        _, preset = self._find_preset(preset_id)
+        return self._serialize_preset(preset)
+
+    def update_preset(self, preset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        workspace, preset = self._find_preset(preset_id)
+        if "name" in payload:
+            preset["name"] = _clean_text(payload.get("name")) or preset["name"]
+        if "overlay_id" in payload:
+            preset["overlay_id"] = _clean_text(payload.get("overlay_id"))
+        if "project_ids" in payload:
+            preset["project_ids"] = self._normalize_lines(payload.get("project_ids"))
+        if "include_role_documents" in payload:
+            preset["include_role_documents"] = bool(payload.get("include_role_documents"))
+        preset["updated_at"] = time.time()
+        workspace["updated_at"] = preset["updated_at"]
+        self.repository.save_workspace(workspace)
+        return self._serialize_preset(preset)
+
+    def list_bundles(self, workspace_id: str) -> dict[str, Any]:
+        workspace = self._workspaces[workspace_id]
+        return {"bundles": [dict(item) for item in workspace.get("compiled_bundles", [])]}
+
+    def get_bundle(self, bundle_id: str) -> dict[str, Any]:
+        for workspace in self._workspaces.values():
+            for bundle in workspace.get("compiled_bundles", []):
+                if _clean_text(bundle.get("bundle_id")) == bundle_id:
+                    return dict(bundle)
+        raise KeyError(bundle_id)
+
+    def build_preset_session_payload(self, preset_id: str) -> dict[str, Any]:
+        workspace, preset = self._find_preset(preset_id)
+        overlay = None
+        overlay_id = _clean_text(preset.get("overlay_id"))
+        if overlay_id:
+            try:
+                _, overlay = self._find_overlay(overlay_id)
+            except KeyError:
+                overlay = None
+        payload = self.session_builder.build_session_payload(workspace, preset, overlay)
+        workspace.setdefault("compiled_bundles", []).append(dict(payload["activation_summary"]))
+        workspace["updated_at"] = time.time()
+        self.repository.save_workspace(workspace)
+        return payload
 
     def update_workspace(self, workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         workspace = self._workspaces[workspace_id]
@@ -203,6 +330,9 @@ class WorkspaceManager:
             "workspace_id": workspace["workspace_id"],
             "name": workspace["name"],
             "knowledge": workspace["knowledge"],
+            "overlays": [self._serialize_overlay(item) for item in workspace.get("overlays", [])],
+            "presets": [self._serialize_preset(item) for item in workspace.get("presets", [])],
+            "compiled_bundles": [dict(item) for item in workspace.get("compiled_bundles", [])],
             "created_at": workspace["created_at"],
             "updated_at": workspace["updated_at"],
             "compiled_knowledge": workspace["compiled_knowledge"],
@@ -239,8 +369,16 @@ class WorkspaceManager:
     def _normalize_project(self, payload: dict[str, Any]) -> dict[str, Any]:
         project = self._default_project(_clean_text(payload.get("name")) or "Interview Project")
         project["project_id"] = _clean_text(payload.get("project_id")) or project["project_id"]
+        project["pitch_30"] = _clean_text(payload.get("pitch_30")) or project["pitch_30"]
+        project["pitch_90"] = _clean_text(payload.get("pitch_90")) or project["pitch_90"]
         project["business_value"] = _clean_text(payload.get("business_value")) or project["business_value"]
         project["architecture"] = _clean_text(payload.get("architecture")) or project["architecture"]
+        project["key_metrics"] = self._normalize_lines(payload.get("key_metrics")) or project["key_metrics"]
+        project["tradeoffs"] = self._normalize_lines(payload.get("tradeoffs")) or project["tradeoffs"]
+        project["failure_cases"] = self._normalize_lines(payload.get("failure_cases")) or project["failure_cases"]
+        project["limitations"] = self._normalize_lines(payload.get("limitations")) or project["limitations"]
+        project["upgrade_plan"] = self._normalize_lines(payload.get("upgrade_plan")) or project["upgrade_plan"]
+        project["interviewer_hooks"] = self._normalize_lines(payload.get("interviewer_hooks")) or project["interviewer_hooks"]
         project["repo_summaries"] = [
             {
                 "repo_id": _clean_text(item.get("repo_id")) or str(uuid4()),
@@ -276,8 +414,16 @@ class WorkspaceManager:
         return {
             "project_id": str(uuid4()),
             "name": name,
+            "pitch_30": "",
+            "pitch_90": "",
             "business_value": "",
             "architecture": "",
+            "key_metrics": [],
+            "tradeoffs": [],
+            "failure_cases": [],
+            "limitations": [],
+            "upgrade_plan": [],
+            "interviewer_hooks": [],
             "repo_summaries": [],
             "documents": [],
             "code_files": [],
@@ -287,11 +433,73 @@ class WorkspaceManager:
         return {
             "project_id": project["project_id"],
             "name": project["name"],
+            "pitch_30": project.get("pitch_30", ""),
+            "pitch_90": project.get("pitch_90", ""),
             "business_value": project["business_value"],
             "architecture": project["architecture"],
+            "key_metrics": list(project.get("key_metrics", [])),
+            "tradeoffs": list(project.get("tradeoffs", [])),
+            "failure_cases": list(project.get("failure_cases", [])),
+            "limitations": list(project.get("limitations", [])),
+            "upgrade_plan": list(project.get("upgrade_plan", [])),
+            "interviewer_hooks": list(project.get("interviewer_hooks", [])),
             "repo_summaries": [dict(item) for item in project.get("repo_summaries", [])],
             "documents": [dict(item) for item in project.get("documents", [])],
             "code_files": [dict(item) for item in project.get("code_files", [])],
+        }
+
+    def _normalize_overlay(self, payload: dict[str, Any]) -> dict[str, Any]:
+        now = time.time()
+        return {
+            "overlay_id": _clean_text(payload.get("overlay_id")) or str(uuid4()),
+            "name": _clean_text(payload.get("name")) or "Interview Overlay",
+            "company": _clean_text(payload.get("company")),
+            "job_description": _clean_text(payload.get("job_description")),
+            "business_context": _clean_text(payload.get("business_context")),
+            "focus_project_ids": self._normalize_lines(payload.get("focus_project_ids")),
+            "emphasis_points": self._normalize_lines(payload.get("emphasis_points")),
+            "style_profile": self._normalize_lines(payload.get("style_profile")),
+            "depth_policy": _clean_text(payload.get("depth_policy")) or "standard",
+            "created_at": float(payload.get("created_at", now) or now),
+            "updated_at": float(payload.get("updated_at", now) or now),
+        }
+
+    def _serialize_overlay(self, overlay: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "overlay_id": overlay["overlay_id"],
+            "name": overlay["name"],
+            "company": overlay.get("company", ""),
+            "job_description": overlay.get("job_description", ""),
+            "business_context": overlay.get("business_context", ""),
+            "focus_project_ids": list(overlay.get("focus_project_ids", [])),
+            "emphasis_points": list(overlay.get("emphasis_points", [])),
+            "style_profile": list(overlay.get("style_profile", [])),
+            "depth_policy": overlay.get("depth_policy", "standard"),
+            "created_at": overlay.get("created_at", 0.0),
+            "updated_at": overlay.get("updated_at", 0.0),
+        }
+
+    def _normalize_preset(self, payload: dict[str, Any]) -> dict[str, Any]:
+        now = time.time()
+        return {
+            "preset_id": _clean_text(payload.get("preset_id")) or str(uuid4()),
+            "name": _clean_text(payload.get("name")) or "Interview Preset",
+            "overlay_id": _clean_text(payload.get("overlay_id")),
+            "project_ids": self._normalize_lines(payload.get("project_ids")),
+            "include_role_documents": bool(payload.get("include_role_documents", True)),
+            "created_at": float(payload.get("created_at", now) or now),
+            "updated_at": float(payload.get("updated_at", now) or now),
+        }
+
+    def _serialize_preset(self, preset: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "preset_id": preset["preset_id"],
+            "name": preset["name"],
+            "overlay_id": preset.get("overlay_id", ""),
+            "project_ids": list(preset.get("project_ids", [])),
+            "include_role_documents": bool(preset.get("include_role_documents", True)),
+            "created_at": preset.get("created_at", 0.0),
+            "updated_at": preset.get("updated_at", 0.0),
         }
 
     def _normalize_lines(self, value: Any) -> list[str]:
@@ -316,6 +524,20 @@ class WorkspaceManager:
                 if _clean_text(project.get("project_id")) == project_id:
                     return workspace, project
         raise KeyError(project_id)
+
+    def _find_overlay(self, overlay_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        for workspace in self._workspaces.values():
+            for overlay in workspace.get("overlays", []):
+                if _clean_text(overlay.get("overlay_id")) == overlay_id:
+                    return workspace, overlay
+        raise KeyError(overlay_id)
+
+    def _find_preset(self, preset_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        for workspace in self._workspaces.values():
+            for preset in workspace.get("presets", []):
+                if _clean_text(preset.get("preset_id")) == preset_id:
+                    return workspace, preset
+        raise KeyError(preset_id)
 
     def _import_into_project(
         self,
@@ -403,10 +625,57 @@ class WorkspaceManager:
     def _upgrade_loaded_workspaces(self) -> None:
         changed = False
         for workspace in self._workspaces.values():
+            if "overlays" not in workspace:
+                workspace["overlays"] = []
+                changed = True
+            else:
+                normalized_overlays = [
+                    self._normalize_overlay(overlay)
+                    for overlay in workspace.get("overlays", [])
+                    if isinstance(overlay, dict)
+                ]
+                if normalized_overlays != workspace.get("overlays", []):
+                    workspace["overlays"] = normalized_overlays
+                    changed = True
+            if "presets" not in workspace:
+                workspace["presets"] = []
+                changed = True
+            else:
+                normalized_presets = [
+                    self._normalize_preset(preset)
+                    for preset in workspace.get("presets", [])
+                    if isinstance(preset, dict)
+                ]
+                if normalized_presets != workspace.get("presets", []):
+                    workspace["presets"] = normalized_presets
+                    changed = True
+            if "compiled_bundles" not in workspace:
+                workspace["compiled_bundles"] = []
+                changed = True
             for project in workspace.get("knowledge", {}).get("projects", []):
                 if not _clean_text(project.get("project_id")):
                     project["project_id"] = str(uuid4())
                     changed = True
+                for field in (
+                    "pitch_30",
+                    "pitch_90",
+                    "key_metrics",
+                    "tradeoffs",
+                    "failure_cases",
+                    "limitations",
+                    "upgrade_plan",
+                    "interviewer_hooks",
+                ):
+                    if field not in project:
+                        project[field] = [] if field.endswith("s") or field in {"key_metrics", "tradeoffs"} else ""
+                        changed = True
+                if not isinstance(project.get("key_metrics"), list):
+                    project["key_metrics"] = self._normalize_lines(project.get("key_metrics"))
+                    changed = True
+                for field in ("tradeoffs", "failure_cases", "limitations", "upgrade_plan", "interviewer_hooks"):
+                    if not isinstance(project.get(field), list):
+                        project[field] = self._normalize_lines(project.get(field))
+                        changed = True
                 if "repo_summaries" not in project:
                     project["repo_summaries"] = []
                     changed = True

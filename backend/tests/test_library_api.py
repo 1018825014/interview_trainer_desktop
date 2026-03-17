@@ -59,6 +59,61 @@ class LibraryApiTests(unittest.TestCase):
         self.assertEqual(repos["repos"][0]["root_path"], str(repo_root))
         self.assertEqual(repos["repos"][0]["status"], "ready")
 
+    def test_build_session_payload_returns_knowledge_briefing_and_activation_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = TestClient(create_app(workspace_storage_root=Path(tmpdir)))
+
+            workspace = client.post("/api/library/workspaces", json={"name": "Library"}).json()
+            project = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/projects",
+                json={
+                    "name": "Agent Console",
+                    "pitch_30": "Short pitch",
+                    "business_value": "Build agent workflows for operations teams",
+                    "architecture": "React UI + Python orchestrator",
+                    "documents": [
+                        {
+                            "path": "README.md",
+                            "content": "Latency dropped from 1.8s to 900ms.",
+                        }
+                    ],
+                    "code_files": [
+                        {
+                            "path": "src/orchestrator/workflow.py",
+                            "content": "def run():\n    return 'ok'\n",
+                        }
+                    ],
+                },
+            ).json()
+            overlay = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/overlays",
+                json={
+                    "name": "Alibaba",
+                    "company": "Alibaba",
+                    "job_description": "agent platform",
+                    "business_context": "support internal engineering teams",
+                },
+            ).json()
+            preset = client.post(
+                f"/api/library/workspaces/{workspace['workspace_id']}/presets",
+                json={
+                    "name": "Alibaba preset",
+                    "project_ids": [project["project_id"]],
+                    "overlay_id": overlay["overlay_id"],
+                },
+            ).json()
+
+            payload = client.post(
+                f"/api/library/presets/{preset['preset_id']}/build-session-payload"
+            ).json()
+
+        self.assertEqual(payload["knowledge"]["projects"][0]["project_id"], project["project_id"])
+        self.assertEqual(payload["knowledge"]["projects"][0]["pitch_30"], "Short pitch")
+        self.assertEqual(payload["briefing"]["company"], "Alibaba")
+        self.assertEqual(payload["briefing"]["job_description"], "agent platform")
+        self.assertEqual(payload["activation_summary"]["project_count"], 1)
+        self.assertGreaterEqual(payload["activation_summary"]["retrieval_unit_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

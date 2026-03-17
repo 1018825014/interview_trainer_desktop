@@ -247,6 +247,83 @@ def create_app(*, workspace_storage_root: Path | str | None = None) -> Any:
         except FileNotFoundError as exc:  # pragma: no cover
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/library/workspaces/{workspace_id}/overlays")
+    def list_library_overlays(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_overlays(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.post("/api/library/workspaces/{workspace_id}/overlays")
+    def create_library_overlay(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.create_overlay(workspace_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/overlays/{overlay_id}")
+    def get_library_overlay(overlay_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_overlay(overlay_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="overlay not found") from exc
+
+    @app.put("/api/library/overlays/{overlay_id}")
+    def update_library_overlay(overlay_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.update_overlay(overlay_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="overlay not found") from exc
+
+    @app.get("/api/library/workspaces/{workspace_id}/presets")
+    def list_library_presets(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_presets(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.post("/api/library/workspaces/{workspace_id}/presets")
+    def create_library_preset(workspace_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.create_preset(workspace_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/presets/{preset_id}")
+    def get_library_preset(preset_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_preset(preset_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="preset not found") from exc
+
+    @app.put("/api/library/presets/{preset_id}")
+    def update_library_preset(preset_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_manager.update_preset(preset_id, payload)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="preset not found") from exc
+
+    @app.post("/api/library/presets/{preset_id}/build-session-payload")
+    def build_library_session_payload(preset_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.build_preset_session_payload(preset_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="preset not found") from exc
+
+    @app.get("/api/library/workspaces/{workspace_id}/bundles")
+    def list_library_bundles(workspace_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.list_bundles(workspace_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="workspace not found") from exc
+
+    @app.get("/api/library/bundles/{bundle_id}")
+    def get_library_bundle(bundle_id: str) -> dict[str, Any]:
+        try:
+            return workspace_manager.get_bundle(bundle_id)
+        except KeyError as exc:  # pragma: no cover
+            raise HTTPException(status_code=404, detail="bundle not found") from exc
+
     @app.post("/api/workspaces/{workspace_id}/compile")
     def compile_workspace(workspace_id: str) -> dict[str, Any]:
         try:
