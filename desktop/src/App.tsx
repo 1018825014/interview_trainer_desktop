@@ -976,6 +976,40 @@ function App() {
   );
 }
 
+function defaultFastPresetOptions(): GenerationSettingsView["fast_preset_options"] {
+  return [
+    {
+      value: "qwen3.5-flash",
+      model: "qwen3.5-flash",
+      enable_thinking: false,
+    },
+    {
+      value: "qwen3.5-plus",
+      model: "qwen3.5-plus",
+      enable_thinking: false,
+    },
+  ];
+}
+
+function resolveFastPresetSelection(settings: GenerationSettingsView): string {
+  const options = settings.fast_preset_options ?? defaultFastPresetOptions();
+  if (settings.fast_preset && options.some((option) => option.value === settings.fast_preset)) {
+    return settings.fast_preset;
+  }
+  const matched = options.find((option) => option.model === settings.fast_model);
+  return matched?.value ?? options[0]?.value ?? "qwen3.5-flash";
+}
+
+function formatThinkingMode(value: boolean | null): string {
+  if (value === true) {
+    return "enabled";
+  }
+  if (value === false) {
+    return "disabled";
+  }
+  return "inherit";
+}
+
 function formatMetric(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "--";
@@ -1108,40 +1142,6 @@ function mapBackendPrewarm(raw: any): PrewarmView | null {
     starterMs: raw.starter_ms ?? null,
     error: String(raw.error ?? ""),
   };
-}
-
-function defaultFastPresetOptions(): GenerationSettingsView["fast_preset_options"] {
-  return [
-    {
-      value: "qwen3.5-flash",
-      model: "qwen3.5-flash",
-      enable_thinking: false,
-    },
-    {
-      value: "qwen3.5-plus",
-      model: "qwen3.5-plus",
-      enable_thinking: false,
-    },
-  ];
-}
-
-function resolveFastPresetSelection(settings: GenerationSettingsView): string {
-  const options = settings.fast_preset_options ?? defaultFastPresetOptions();
-  if (settings.fast_preset && options.some((option) => option.value === settings.fast_preset)) {
-    return settings.fast_preset;
-  }
-  const matched = options.find((option) => option.model === settings.fast_model);
-  return matched?.value ?? options[0]?.value ?? "qwen3.5-flash";
-}
-
-function formatThinkingMode(value: boolean | null): string {
-  if (value === true) {
-    return "enabled";
-  }
-  if (value === false) {
-    return "disabled";
-  }
-  return "inherit";
 }
 
 export default App;

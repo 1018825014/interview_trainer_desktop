@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from interview_trainer.answer_control import AnswerPlan, AnswerState
 from interview_trainer.config import GenerationLaneSettings, GenerationSettings
@@ -33,6 +34,84 @@ class OpenAIChatProviderTests(unittest.TestCase):
         )
 
         self.assertEqual(delta, "hello")
+
+    def test_generate_includes_enable_thinking_when_configured(self) -> None:
+        provider = OpenAIChatProvider(
+            endpoint=GenerationLaneSettings(
+                provider="openai",
+                api_key="test-key",
+                model="qwen3.5-flash",
+                enable_thinking=False,
+            ),
+            prompt_builder=PromptBuilder(),
+            level="starter",
+        )
+        pack = mock.Mock(
+            profile_refs=[],
+            retrieval_refs=[],
+            hook_refs=[],
+            evidence_refs=[],
+            project_refs=[],
+            module_refs=[],
+            code_refs=[],
+            role_refs=[],
+        )
+        with (
+            mock.patch.object(provider.prompt_builder, "build_messages", return_value=[]),
+            mock.patch.object(
+                provider,
+                "_call_chat_completions",
+                return_value='{"text":"ok","bullets":[]}',
+            ) as call_chat,
+        ):
+            provider.full(
+                turn_id="turn-1",
+                question="test question",
+                route=mock.Mock(),
+                pack=pack,
+                briefing=mock.Mock(),
+                candidate_history=[],
+            )
+
+        payload = call_chat.call_args.args[0]
+        self.assertIn("enable_thinking", payload)
+        self.assertFalse(payload["enable_thinking"])
+
+    def test_generate_omits_enable_thinking_when_unset(self) -> None:
+        provider = OpenAIChatProvider(
+            endpoint=GenerationLaneSettings(provider="openai", api_key="test-key", model="qwen-flash"),
+            prompt_builder=PromptBuilder(),
+            level="starter",
+        )
+        pack = mock.Mock(
+            profile_refs=[],
+            retrieval_refs=[],
+            hook_refs=[],
+            evidence_refs=[],
+            project_refs=[],
+            module_refs=[],
+            code_refs=[],
+            role_refs=[],
+        )
+        with (
+            mock.patch.object(provider.prompt_builder, "build_messages", return_value=[]),
+            mock.patch.object(
+                provider,
+                "_call_chat_completions",
+                return_value='{"text":"ok","bullets":[]}',
+            ) as call_chat,
+        ):
+            provider.full(
+                turn_id="turn-1",
+                question="test question",
+                route=mock.Mock(),
+                pack=pack,
+                briefing=mock.Mock(),
+                candidate_history=[],
+            )
+
+        payload = call_chat.call_args.args[0]
+        self.assertNotIn("enable_thinking", payload)
 
     def test_builder_supports_mixed_lane_providers(self) -> None:
         composer = build_dual_draft_composer(

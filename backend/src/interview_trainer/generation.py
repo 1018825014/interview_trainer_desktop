@@ -491,6 +491,8 @@ class OpenAIChatProvider:
             "messages": messages,
             "temperature": self.endpoint.temperature,
         }
+        if self.endpoint.enable_thinking is not None:
+            payload["enable_thinking"] = self.endpoint.enable_thinking
         if level == "starter" and stream_state is not None and self.endpoint.stream_enabled:
             raw_text = self._call_chat_completions_streaming(payload, stream_state)
         else:
