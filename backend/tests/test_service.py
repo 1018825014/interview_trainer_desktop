@@ -1,6 +1,7 @@
 import time
 import unittest
 
+from interview_trainer.config import GenerationSettings
 from interview_trainer.generation import DualDraftComposer
 from interview_trainer.service import InterviewTrainerService
 from interview_trainer.types import AnswerDraft
@@ -102,6 +103,50 @@ class _PrewarmAwareProvider:
 
 
 class InterviewTrainerServiceTests(unittest.TestCase):
+    def test_service_can_switch_fast_generation_preset_at_runtime(self) -> None:
+        settings = GenerationSettings(
+            provider="openai",
+            openai_api_key="dash-key",
+            openai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            fast_provider="openai",
+            fast_api_key="dash-key",
+            fast_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            fast_model="qwen3.5-flash",
+            fast_preset="qwen3.5-flash",
+            fast_enable_thinking=False,
+            smart_provider="template",
+            smart_model="gpt-4.1",
+        )
+        service = InterviewTrainerService(settings=settings)
+
+        current = service.get_generation_settings()
+
+        self.assertEqual(current["fast_preset"], "qwen3.5-flash")
+        self.assertEqual(current["fast_model"], "qwen3.5-flash")
+        self.assertFalse(current["fast_enable_thinking"])
+
+        updated = service.update_generation_settings(
+            {
+                "fast_preset": "qwen3.5-plus",
+                "fast_enable_thinking": True,
+            }
+        )
+
+        self.assertEqual(updated["fast_preset"], "qwen3.5-plus")
+        self.assertEqual(updated["fast_model"], "qwen3.5-plus")
+        self.assertTrue(updated["fast_enable_thinking"])
+        self.assertEqual(
+            getattr(service.composer.fast_provider, "endpoint").model,
+            "qwen3.5-plus",
+        )
+        self.assertTrue(getattr(service.composer.fast_provider, "endpoint").enable_thinking)
+
+    def test_service_rejects_invalid_fast_preset_update(self) -> None:
+        service = InterviewTrainerService(settings=GenerationSettings())
+
+        with self.assertRaises(ValueError):
+            service.update_generation_settings({"fast_preset": "turbo"})
+
     def test_answer_generation_transitions_from_pending_to_complete(self) -> None:
         service = InterviewTrainerService(
             composer=DualDraftComposer(

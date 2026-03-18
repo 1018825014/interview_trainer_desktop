@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from uuid import uuid4
 
 from .briefing import BriefingBuilder
-from .config import GenerationSettings
+from .config import GenerationSettings, list_fast_model_presets
+from .config import _resolve_fast_model_preset
 from .corrections import TerminologyCorrector
 from .generation import DraftFutures, DualDraftComposer, StarterPrewarm, build_dual_draft_composer
 from .knowledge import KnowledgeCompiler
@@ -71,18 +72,49 @@ class InterviewTrainerService:
             return {
                 "session_id": session_id,
                 "briefing": asdict(briefing),
-                "generation": {
-                    "provider": self.settings.provider,
-                    "fast_provider": self.settings.fast_provider,
-                    "fast_model": self.settings.fast_model,
-                    "smart_provider": self.settings.smart_provider,
-                    "smart_model": self.settings.smart_model,
-                },
+                "generation": self.get_generation_settings(),
                 "knowledge_overview": {
                     "projects": [project.name for project in knowledge.projects],
                     "role_playbooks": [playbook.role_name for playbook in knowledge.role_playbooks],
                 },
             }
+
+    def get_generation_settings(self) -> dict:
+        with self._lock:
+            return self._serialize_generation_settings()
+
+    def update_generation_settings(self, payload: dict) -> dict:
+        with self._lock:
+            next_settings = self.settings
+
+            if "fast_preset" in payload:
+                preset = _resolve_fast_model_preset(str(payload.get("fast_preset", "")))
+                if preset is None:
+                    raise ValueError("fast_preset cannot be empty")
+                next_settings = replace(
+                    next_settings,
+                    fast_model=preset.model,
+                    fast_preset=preset.name,
+                    fast_enable_thinking=preset.enable_thinking,
+                )
+
+            if "fast_enable_thinking" in payload:
+                value = payload["fast_enable_thinking"]
+                if value is None or isinstance(value, bool):
+                    fast_enable_thinking = value
+                else:
+                    raise ValueError("fast_enable_thinking must be a boolean or null")
+                next_settings = replace(next_settings, fast_enable_thinking=fast_enable_thinking)
+
+            if next_settings is self.settings:
+                return self._serialize_generation_settings()
+
+            old_composer = self.composer
+            self.settings = next_settings
+            self.composer = build_dual_draft_composer(self.settings)
+            if hasattr(old_composer, "shutdown"):
+                old_composer.shutdown(wait=False)
+            return self._serialize_generation_settings()
 
     def handle_transcript(self, session_id: str, payload: dict) -> dict:
         with self._lock:
@@ -173,6 +205,30 @@ class InterviewTrainerService:
             job_description=payload.get("job_description", ""),
             knowledge=knowledge,
         )
+
+    def _serialize_generation_settings(self) -> dict:
+        return {
+            "provider": self.settings.provider,
+            "base_url": self.settings.openai_base_url,
+            "enable_thinking": self.settings.enable_thinking,
+            "fast_provider": self.settings.fast_provider,
+            "fast_base_url": self.settings.fast_base_url,
+            "fast_model": self.settings.fast_model,
+            "fast_preset": self.settings.fast_preset,
+            "fast_enable_thinking": self.settings.fast_enable_thinking,
+            "smart_provider": self.settings.smart_provider,
+            "smart_base_url": self.settings.smart_base_url,
+            "smart_model": self.settings.smart_model,
+            "smart_enable_thinking": self.settings.smart_enable_thinking,
+            "fast_preset_options": [
+                {
+                    "value": preset.name,
+                    "model": preset.model,
+                    "enable_thinking": preset.enable_thinking,
+                }
+                for preset in list_fast_model_presets()
+            ],
+        }
 
     def _build_answer_payload(self, session_id: str, session: InterviewSession, decision: TurnDecision) -> dict:
         if not decision.should_generate or not decision.locked_question or not decision.turn_id:

@@ -143,6 +143,7 @@ set INTERVIEW_TRAINER_LLM_API_KEY=sk-...
 set INTERVIEW_TRAINER_LLM_BASE_URL=https://subrouter.ai/v1
 set INTERVIEW_TRAINER_FAST_MODEL=gpt-4.1-mini
 set INTERVIEW_TRAINER_SMART_MODEL=gpt-4.1
+set INTERVIEW_TRAINER_LLM_ENABLE_THINKING=
 set INTERVIEW_TRAINER_LLM_STARTER_STREAM=true
 ```
 
@@ -152,12 +153,15 @@ For a split fast/smart setup, you can override each lane independently:
 set INTERVIEW_TRAINER_FAST_PROVIDER=openai
 set INTERVIEW_TRAINER_FAST_API_KEY=your-fast-key
 set INTERVIEW_TRAINER_FAST_BASE_URL=https://fast-provider.example/v1
+set INTERVIEW_TRAINER_FAST_PRESET=
 set INTERVIEW_TRAINER_FAST_MODEL=your-fast-model
+set INTERVIEW_TRAINER_FAST_ENABLE_THINKING=
 set INTERVIEW_TRAINER_FAST_TIMEOUT_S=12
 set INTERVIEW_TRAINER_SMART_PROVIDER=openai
 set INTERVIEW_TRAINER_SMART_API_KEY=your-smart-key
 set INTERVIEW_TRAINER_SMART_BASE_URL=https://smart-provider.example/v1
 set INTERVIEW_TRAINER_SMART_MODEL=your-smart-model
+set INTERVIEW_TRAINER_SMART_ENABLE_THINKING=
 set INTERVIEW_TRAINER_SMART_TIMEOUT_S=45
 ```
 
@@ -181,6 +185,13 @@ Notes:
 - `INTERVIEW_TRAINER_FAST_*` and `INTERVIEW_TRAINER_SMART_*` override the shared generation settings per lane
 - if a lane does not define its own provider/key/base URL, it falls back to the shared `INTERVIEW_TRAINER_LLM_*` values
 - a lane can also be forced back to `template`, which is useful when you want an instant local starter while a slower remote model handles `full`
+- `INTERVIEW_TRAINER_LLM_ENABLE_THINKING`, `INTERVIEW_TRAINER_FAST_ENABLE_THINKING`, and `INTERVIEW_TRAINER_SMART_ENABLE_THINKING` are optional; leave them empty to preserve provider defaults
+- lane-specific `*_ENABLE_THINKING` values override the shared `INTERVIEW_TRAINER_LLM_ENABLE_THINKING`
+- this is especially useful for DashScope Qwen 3.5 models when you want `enable_thinking=false` on the fast lane
+- if the fast lane points at DashScope compatible mode and you do not set a fast model, the backend now defaults the fast lane to `qwen3.5-flash`
+- in that DashScope fast-lane default, `enable_thinking=false` is applied automatically so the starter path stays latency-oriented
+- `INTERVIEW_TRAINER_FAST_PRESET` is an optional shortcut for fast-lane model switching; supported values are `dashscope-flash`, `qwen3.5-flash`, `dashscope-plus`, and `qwen3.5-plus`
+- when `INTERVIEW_TRAINER_FAST_PRESET` is set, it overrides `INTERVIEW_TRAINER_FAST_MODEL`; `INTERVIEW_TRAINER_FAST_ENABLE_THINKING` can still override the preset's default thinking mode
 - when `INTERVIEW_TRAINER_LLM_STARTER_STREAM=true`, starter drafts use streaming chat completions when the provider supports SSE
 - the backend will surface `starter_streaming` with a partial starter draft before the final starter is complete
 - `answer.metrics.starter_stream_ms` records when the first visible starter fragment appeared, so you can compare first-token latency against final starter latency
@@ -399,6 +410,7 @@ POST /api/sessions/{session_id}/tick
 Current UI includes:
 
 - knowledge workspace panel
+- answer engine panel for switching the fast-lane Qwen preset and `enable_thinking`
 - local path import input for project docs/code
 - JD and company briefing panel
 - audio plan card

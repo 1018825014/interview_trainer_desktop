@@ -70,6 +70,74 @@ class GenerationSettingsTests(unittest.TestCase):
         self.assertEqual(settings.smart_request_timeout_s, 45.0)
         self.assertTrue(settings.smart_lane.use_openai)
 
+    def test_dashscope_fast_lane_defaults_to_qwen35_flash_without_thinking(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_LLM_PROVIDER": "openai",
+            "INTERVIEW_TRAINER_LLM_API_KEY": "dash-key",
+            "INTERVIEW_TRAINER_LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            settings = GenerationSettings.from_env()
+
+        self.assertEqual(settings.fast_model, "qwen3.5-flash")
+        self.assertFalse(settings.fast_enable_thinking)
+        self.assertFalse(settings.fast_lane.enable_thinking)
+        self.assertIsNone(settings.smart_enable_thinking)
+
+    def test_fast_preset_switches_to_qwen35_plus_without_thinking(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_FAST_PRESET": "qwen3.5-plus",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            settings = GenerationSettings.from_env()
+
+        self.assertEqual(settings.fast_model, "qwen3.5-plus")
+        self.assertFalse(settings.fast_enable_thinking)
+
+    def test_fast_enable_thinking_override_beats_fast_preset_default(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_FAST_PRESET": "dashscope-plus",
+            "INTERVIEW_TRAINER_FAST_ENABLE_THINKING": "true",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            settings = GenerationSettings.from_env()
+
+        self.assertEqual(settings.fast_model, "qwen3.5-plus")
+        self.assertTrue(settings.fast_enable_thinking)
+        self.assertTrue(settings.fast_lane.enable_thinking)
+
+    def test_generation_settings_support_enable_thinking_defaults_and_lane_overrides(self) -> None:
+        env = {
+            "INTERVIEW_TRAINER_LLM_ENABLE_THINKING": "false",
+            "INTERVIEW_TRAINER_FAST_ENABLE_THINKING": "true",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            settings = GenerationSettings.from_env()
+
+        self.assertFalse(settings.enable_thinking)
+        self.assertTrue(settings.fast_enable_thinking)
+        self.assertFalse(settings.smart_enable_thinking)
+        self.assertTrue(settings.fast_lane.enable_thinking)
+        self.assertFalse(settings.smart_lane.enable_thinking)
+
+    def test_generation_settings_reject_invalid_enable_thinking_values(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"INTERVIEW_TRAINER_FAST_ENABLE_THINKING": "maybe"},
+            clear=True,
+        ):
+            with self.assertRaises(ValueError):
+                GenerationSettings.from_env()
+
+    def test_generation_settings_reject_invalid_fast_presets(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"INTERVIEW_TRAINER_FAST_PRESET": "turbo"},
+            clear=True,
+        ):
+            with self.assertRaises(ValueError):
+                GenerationSettings.from_env()
+
 
 class TranscriptionSettingsTests(unittest.TestCase):
     def test_transcription_settings_read_alibaba_realtime_env_vars(self) -> None:

@@ -183,6 +183,16 @@ select {
   color: var(--muted);
 }
 
+.toggle-row {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-row span {
+  margin-top: 8px;
+}
+
 input,
 textarea,
 select {
@@ -198,6 +208,12 @@ select {
 
 select {
   color-scheme: dark;
+}
+
+.toggle-row input[type="checkbox"] {
+  width: auto;
+  margin-top: 8px;
+  accent-color: var(--accent);
 }
 
 select:focus-visible {

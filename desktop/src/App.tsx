@@ -9,6 +9,7 @@ import {
   fetchAudioRecommendation,
   getWorkspace,
   getAnswer,
+  getGenerationSettings,
   getLiveBridge,
   importWorkspacePath,
   listWorkspaces,
@@ -20,6 +21,7 @@ import {
   updateWorkspace,
   tickSession,
   transcribeAudioSession,
+  updateGenerationSettings,
 } from "./api/client";
 import {
   demoTurnTranscript,
@@ -42,6 +44,7 @@ import {
   AudioSessionView,
   AudioTranscriptionView,
   CorrectionSuggestionView,
+  GenerationSettingsView,
   KnowledgeWorkspaceView,
   LiveBridgeView,
   PartialTranscriptView,
@@ -73,6 +76,11 @@ function App() {
   const [workspace, setWorkspace] = useState<KnowledgeWorkspaceView>(sampleKnowledgeWorkspace);
   const [workspaceImportPath, setWorkspaceImportPath] = useState("");
   const [workspaceStatus, setWorkspaceStatus] = useState("Draft only");
+  const [generationSettings, setGenerationSettings] = useState<GenerationSettingsView | null>(null);
+  const [selectedFastPreset, setSelectedFastPreset] = useState("qwen3.5-flash");
+  const [fastThinkingEnabled, setFastThinkingEnabled] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState("Waiting for backend");
+  const [generationSaving, setGenerationSaving] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionSuggestionView[]>(sampleCorrections);
   const [errorMessage, setErrorMessage] = useState("");
   const backendBaseUrl = window.interviewTrainer?.backendBaseUrl ?? "http://127.0.0.1:8000";
@@ -152,6 +160,33 @@ function App() {
       }
     };
     void loadWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, [backendOnline, backendBaseUrl]);
+
+  useEffect(() => {
+    if (!backendOnline) {
+      return;
+    }
+    let cancelled = false;
+    const loadGenerationSettings = async () => {
+      try {
+        const payload = (await getGenerationSettings(backendBaseUrl)) as GenerationSettingsView;
+        if (cancelled) {
+          return;
+        }
+        setGenerationSettings(payload);
+        setSelectedFastPreset(resolveFastPresetSelection(payload));
+        setFastThinkingEnabled(Boolean(payload.fast_enable_thinking));
+        setGenerationStatus("Synced from backend");
+      } catch {
+        if (!cancelled) {
+          setGenerationStatus("Backend settings unavailable");
+        }
+      }
+    };
+    void loadGenerationSettings();
     return () => {
       cancelled = true;
     };
@@ -252,6 +287,25 @@ function App() {
       return;
     }
     setAlwaysOnTop(nextValue);
+  }
+
+  async function handleSaveGenerationSettings() {
+    setErrorMessage("");
+    setGenerationSaving(true);
+    try {
+      const updated = (await updateGenerationSettings(backendBaseUrl, {
+        fast_preset: selectedFastPreset,
+        fast_enable_thinking: fastThinkingEnabled,
+      })) as GenerationSettingsView;
+      setGenerationSettings(updated);
+      setSelectedFastPreset(resolveFastPresetSelection(updated));
+      setFastThinkingEnabled(Boolean(updated.fast_enable_thinking));
+      setGenerationStatus("Fast lane updated");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to update fast lane settings");
+    } finally {
+      setGenerationSaving(false);
+    }
   }
 
   async function ensureWorkspaceSaved(): Promise<KnowledgeWorkspaceView> {
@@ -613,6 +667,58 @@ function App() {
       </header>
 
       <main className="grid">
+        <section className="panel panel-generation">
+          <div className="panel-head">
+            <span>Answer Engine</span>
+            <strong>{generationSettings?.fast_model ?? "Not loaded"}</strong>
+          </div>
+          <div className="meta-card">
+            <div className="panel-head compact">
+              <span>Fast Lane</span>
+              <strong>{generationSettings?.fast_provider ?? "template"}</strong>
+            </div>
+            <p>
+              Base URL: <strong>{generationSettings?.fast_base_url ?? backendBaseUrl}</strong>
+            </p>
+            <p>
+              Current model: <strong>{generationSettings?.fast_model ?? "qwen3.5-flash"}</strong> | Thinking:{" "}
+              <strong>{formatThinkingMode(generationSettings?.fast_enable_thinking ?? null)}</strong>
+            </p>
+            <label>
+              Fast preset
+              <select value={selectedFastPreset} onChange={(event) => setSelectedFastPreset(event.target.value)}>
+                {(generationSettings?.fast_preset_options ?? defaultFastPresetOptions()).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.model}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={fastThinkingEnabled}
+                onChange={(event) => setFastThinkingEnabled(event.target.checked)}
+              />
+              <span>Enable thinking for fast lane</span>
+            </label>
+            <div className="action-row">
+              <button
+                className="ghost accent small"
+                disabled={!backendOnline || generationSaving}
+                onClick={handleSaveGenerationSettings}
+              >
+                {generationSaving ? "Saving..." : "Apply fast lane"}
+              </button>
+            </div>
+            <p className="backend-meta">{generationStatus}</p>
+            <ul className="note-list">
+              <li>Preset switching only updates the fast lane. Provider and base URL stay unchanged.</li>
+              <li>Changes apply to new answer jobs after the backend accepts the update.</li>
+            </ul>
+          </div>
+        </section>
+
         <section className="panel panel-workspace">
           <div className="panel-head">
             <span>资料工作区</span>
@@ -1115,6 +1221,40 @@ function App() {
       </main>
     </div>
   );
+}
+
+function defaultFastPresetOptions(): GenerationSettingsView["fast_preset_options"] {
+  return [
+    {
+      value: "qwen3.5-flash",
+      model: "qwen3.5-flash",
+      enable_thinking: false,
+    },
+    {
+      value: "qwen3.5-plus",
+      model: "qwen3.5-plus",
+      enable_thinking: false,
+    },
+  ];
+}
+
+function resolveFastPresetSelection(settings: GenerationSettingsView): string {
+  const options = settings.fast_preset_options ?? defaultFastPresetOptions();
+  if (settings.fast_preset && options.some((option) => option.value === settings.fast_preset)) {
+    return settings.fast_preset;
+  }
+  const matched = options.find((option) => option.model === settings.fast_model);
+  return matched?.value ?? options[0]?.value ?? "qwen3.5-flash";
+}
+
+function formatThinkingMode(value: boolean | null): string {
+  if (value === true) {
+    return "enabled";
+  }
+  if (value === false) {
+    return "disabled";
+  }
+  return "inherit";
 }
 
 function formatMetric(value: number | null | undefined): string {

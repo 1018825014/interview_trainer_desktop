@@ -17,6 +17,29 @@ export async function fetchAudioRecommendation(baseUrl: string) {
   return response.json();
 }
 
+export async function getGenerationSettings(baseUrl: string) {
+  const response = await fetch(`${baseUrl}/api/settings/generation`);
+  if (!response.ok) {
+    throw new Error("Failed to load generation settings");
+  }
+  return response.json();
+}
+
+export async function updateGenerationSettings(
+  baseUrl: string,
+  payload: Record<string, unknown>,
+) {
+  const response = await fetch(`${baseUrl}/api/settings/generation`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to update generation settings");
+  }
+  return response.json();
+}
+
 export async function fetchAudioCapabilities(baseUrl: string) {
   const response = await fetch(`${baseUrl}/api/audio/capabilities`);
   if (!response.ok) {

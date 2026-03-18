@@ -280,6 +280,8 @@ class OpenAIChatProvider:
             "messages": messages,
             "temperature": self.endpoint.temperature,
         }
+        if self.endpoint.enable_thinking is not None:
+            payload["enable_thinking"] = self.endpoint.enable_thinking
         if level == "starter" and stream_state is not None and self.endpoint.stream_enabled:
             raw_text = self._call_chat_completions_streaming(payload, stream_state)
         else:
@@ -462,6 +464,9 @@ class DualDraftComposer:
         self.fast_provider = fast_provider
         self.smart_provider = smart_provider
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="draft-composer")
+
+    def shutdown(self, *, wait: bool = True) -> None:
+        self._executor.shutdown(wait=wait, cancel_futures=False)
 
     def start(
         self,

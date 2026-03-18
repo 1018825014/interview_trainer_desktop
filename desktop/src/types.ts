@@ -105,6 +105,28 @@ export interface AudioRecommendationView {
   notes: string[];
 }
 
+export interface FastPresetOptionView {
+  value: string;
+  model: string;
+  enable_thinking: boolean | null;
+}
+
+export interface GenerationSettingsView {
+  provider: string;
+  base_url: string;
+  enable_thinking: boolean | null;
+  fast_provider: string;
+  fast_base_url: string;
+  fast_model: string;
+  fast_preset: string;
+  fast_enable_thinking: boolean | null;
+  smart_provider: string;
+  smart_base_url: string;
+  smart_model: string;
+  smart_enable_thinking: boolean | null;
+  fast_preset_options: FastPresetOptionView[];
+}
+
 export interface AudioSessionView {
   session_id: string;
   status: string;
